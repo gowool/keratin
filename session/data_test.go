@@ -806,3 +806,271 @@ func TestDoStoreMethods(t *testing.T) {
 		})
 	}
 }
+
+func TestGetTime(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	testTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	session.Put(ctx, "timeKey", testTime)
+
+	result := session.GetTime(ctx, "timeKey")
+	assert.Equal(t, testTime, result)
+}
+
+func TestGetTime_ZeroValue(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	result := session.GetTime(ctx, "nonexistent")
+	assert.True(t, result.IsZero(), "should return zero value for non-existent key")
+}
+
+func TestGetTime_WrongType(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	session.Put(ctx, "timeKey", "not a time")
+
+	result := session.GetTime(ctx, "timeKey")
+	assert.True(t, result.IsZero(), "should return zero value when type assertion fails")
+}
+
+func TestGetSessionDataFromContext_Panic(t *testing.T) {
+	session := New(Config{}, &MockStore{})
+
+	ctx := context.Background()
+
+	assert.PanicsWithValue(t, "session: no data in context", func() {
+		session.getSessionDataFromContext(ctx)
+	})
+}
+
+func TestMergeSession_DeadlineBefore(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	oldDeadline := time.Now().Add(24 * time.Hour).UTC()
+	session.SetDeadline(ctx, oldDeadline)
+
+	token := "other-session-token"
+	newDeadline := time.Now().Add(1 * time.Hour).UTC()
+	otherData := map[string]any{
+		"newKey": "newValue",
+	}
+
+	mockStore := session.store.(*MockStore)
+	mockCodec := session.codec.(*MockCodec)
+
+	encodedData := []byte("encoded")
+	mockStore.On("Find", mock.Anything, token).Return(encodedData, true, nil)
+	mockCodec.On("Decode", encodedData).Return(newDeadline, otherData, nil)
+	mockStore.On("Delete", mock.Anything, token).Return(nil)
+
+	err = session.MergeSession(ctx, token)
+	assert.NoError(t, err)
+
+	assert.Equal(t, oldDeadline, session.Deadline(ctx))
+}
+
+func TestPopRune(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	session.Put(ctx, "runeKey", 'X')
+
+	value := session.PopRune(ctx, "runeKey")
+	assert.Equal(t, rune('X'), value)
+	assert.Nil(t, session.Get(ctx, "runeKey"), "key should be removed")
+}
+
+func TestPopRune_NonExistent(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	value := session.PopRune(ctx, "nonexistent")
+	assert.Equal(t, rune(0), value)
+}
+
+func TestPopRune_WrongType(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	session.Put(ctx, "runeKey", "not a rune")
+
+	value := session.PopRune(ctx, "runeKey")
+	assert.Equal(t, rune(0), value)
+}
+
+func TestPopUInt(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	session.Put(ctx, "uintKey", uint(42))
+
+	value := session.PopUInt(ctx, "uintKey")
+	assert.Equal(t, uint(42), value)
+	assert.Nil(t, session.Get(ctx, "uintKey"), "key should be removed")
+}
+
+func TestPopUInt_NonExistent(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	value := session.PopUInt(ctx, "nonexistent")
+	assert.Equal(t, uint(0), value)
+}
+
+func TestPopInt64(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	session.Put(ctx, "int64Key", int64(1234567890))
+
+	value := session.PopInt64(ctx, "int64Key")
+	assert.Equal(t, int64(1234567890), value)
+	assert.Nil(t, session.Get(ctx, "int64Key"), "key should be removed")
+}
+
+func TestPopInt64_NonExistent(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	value := session.PopInt64(ctx, "nonexistent")
+	assert.Equal(t, int64(0), value)
+}
+
+func TestPopInt32(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	session.Put(ctx, "int32Key", int32(42))
+
+	value := session.PopInt32(ctx, "int32Key")
+	assert.Equal(t, int32(42), value)
+	assert.Nil(t, session.Get(ctx, "int32Key"), "key should be removed")
+}
+
+func TestPopInt32_NonExistent(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	value := session.PopInt32(ctx, "nonexistent")
+	assert.Equal(t, int32(0), value)
+}
+
+func TestPopInt16(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	session.Put(ctx, "int16Key", int16(123))
+
+	value := session.PopInt16(ctx, "int16Key")
+	assert.Equal(t, int16(123), value)
+	assert.Nil(t, session.Get(ctx, "int16Key"), "key should be removed")
+}
+
+func TestPopInt16_NonExistent(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	value := session.PopInt16(ctx, "nonexistent")
+	assert.Equal(t, int16(0), value)
+}
+
+func TestPopInt8(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	session.Put(ctx, "int8Key", int8(42))
+
+	value := session.PopInt8(ctx, "int8Key")
+	assert.Equal(t, int8(42), value)
+	assert.Nil(t, session.Get(ctx, "int8Key"), "key should be removed")
+}
+
+func TestPopInt8_NonExistent(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	value := session.PopInt8(ctx, "nonexistent")
+	assert.Equal(t, int8(0), value)
+}
+
+func TestPopFloat64(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	session.Put(ctx, "float64Key", 3.14159)
+
+	value := session.PopFloat64(ctx, "float64Key")
+	assert.Equal(t, 3.14159, value)
+	assert.Nil(t, session.Get(ctx, "float64Key"), "key should be removed")
+}
+
+func TestPopFloat64_NonExistent(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	value := session.PopFloat64(ctx, "nonexistent")
+	assert.Equal(t, float64(0), value)
+}
+
+func TestPopFloat32(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	session.Put(ctx, "float32Key", float32(3.14))
+
+	value := session.PopFloat32(ctx, "float32Key")
+	assert.Equal(t, float32(3.14), value)
+	assert.Nil(t, session.Get(ctx, "float32Key"), "key should be removed")
+}
+
+func TestPopFloat32_NonExistent(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	value := session.PopFloat32(ctx, "nonexistent")
+	assert.Equal(t, float32(0), value)
+}
+
+func TestPopBytes(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	testBytes := []byte("test data")
+	session.Put(ctx, "bytesKey", testBytes)
+
+	value := session.PopBytes(ctx, "bytesKey")
+	assert.Equal(t, testBytes, value)
+	assert.Nil(t, session.Get(ctx, "bytesKey"), "key should be removed")
+}
+
+func TestPopBytes_NonExistent(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	value := session.PopBytes(ctx, "nonexistent")
+	assert.Nil(t, value)
+}
+
+func TestPopTime(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	testTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	session.Put(ctx, "timeKey", testTime)
+
+	value := session.PopTime(ctx, "timeKey")
+	assert.Equal(t, testTime, value)
+	assert.Nil(t, session.Get(ctx, "timeKey"), "key should be removed")
+}
+
+func TestPopTime_NonExistent(t *testing.T) {
+	session, ctx, err := setupTestSession()
+	require.NoError(t, err)
+
+	value := session.PopTime(ctx, "nonexistent")
+	assert.True(t, value.IsZero(), "should return zero value for non-existent key")
+}
