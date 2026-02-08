@@ -8,20 +8,13 @@ import (
 type SameSite string
 
 const (
-	SameSiteDefault SameSite = "default"
-	SameSiteLax     SameSite = "lax"
-	SameSiteStrict  SameSite = "strict"
-	SameSiteNone    SameSite = "none"
+	SameSiteLax    SameSite = "lax"
+	SameSiteStrict SameSite = "strict"
+	SameSiteNone   SameSite = "none"
 )
-
-func (s SameSite) String() string {
-	return string(s)
-}
 
 func (s SameSite) HTTP() http.SameSite {
 	switch s {
-	case SameSiteDefault:
-		return http.SameSiteDefaultMode
 	case SameSiteLax:
 		return http.SameSiteLaxMode
 	case SameSiteStrict:
