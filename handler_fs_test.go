@@ -217,7 +217,7 @@ func TestFileFS(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.NotEmpty(t, w.Body.String())
-		assert.Contains(t, w.Body.String(), "package gor")
+		assert.Contains(t, w.Body.String(), "package keratin")
 	})
 
 	t.Run("returns error for non-existent file", func(t *testing.T) {
