@@ -2,6 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/gowool/keratin.svg)](https://pkg.go.dev/github.com/gowool/keratin)
 [![Go Report Card](https://goreportcard.com/badge/github.com/gowool/keratin)](https://goreportcard.com/report/github.com/gowool/keratin)
+[![codecov](https://codecov.io/github/gowool/keratin/graph/badge.svg?token=IBP5235ZZ4)](https://codecov.io/github/gowool/keratin)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/gowool/keratin/blob/main/LICENSE)
 
 ## Overview
