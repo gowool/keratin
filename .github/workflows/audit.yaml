@@ -38,10 +38,15 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Run tests
-        run: go test -race -v -coverprofile=coverage1.txt --covermode=atomic ./...
+        run: go test -race -v -coverprofile=keratin.txt --covermode=atomic ./...
 
       - name: Run adapter tests
-        run: cd adapter && go test -race -v -coverprofile=../coverage2.txt --covermode=atomic ./...
+        run: go test -race -v -coverprofile=../adapter.txt --covermode=atomic ./...
+        working-directory: ./adapter
+
+      - name: Run session tests
+        run: go test -race -v -coverprofile=../session.txt --covermode=atomic ./...
+        working-directory: ./session
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -49,4 +54,4 @@ jobs:
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
           verbose: true
-          files: ./coverage1.txt,./coverage2.txt
+          files: ./keratin.txt,./adapter.txt,./session.txt
