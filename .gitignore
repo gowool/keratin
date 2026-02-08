@@ -27,6 +27,13 @@ go.work.sum
 # env file
 .env
 
+**/.DS_Store
+**/._.DS_Store
+
 # Editor/IDE
-# .idea/
-# .vscode/
+**/.idea
+**/.vscode
+
+*report.json
+gorace.log*
+*.log
