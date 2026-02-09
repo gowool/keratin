@@ -85,8 +85,8 @@ func TestNewServer(t *testing.T) {
 		})
 	})
 
-	t.Run("nil logger should panic", func(t *testing.T) {
-		assert.Panics(t, func() {
+	t.Run("nil logger should not panic", func(t *testing.T) {
+		assert.NotPanics(t, func() {
 			New(Config{}, handler, nil)
 		})
 	})

@@ -35,6 +35,10 @@ func New(cfg Config, handler http.Handler, logger *slog.Logger) *Server {
 		logger = slog.New(slog.DiscardHandler)
 	}
 
+	logger = logger.WithGroup("server")
+
+	cfg.SetDefaults()
+
 	h2s := &http2.Server{
 		MaxConcurrentStreams: cfg.HTTP2.MaxConcurrentStreams,
 		MaxReadFrameSize:     cfg.HTTP2.MaxReadFrameSize,
