@@ -6,6 +6,8 @@ import (
 	"maps"
 	"net/http"
 	"sync"
+
+	"github.com/gowool/keratin/internal"
 )
 
 // MultipartMaxMemory is the maximum memory to use when parsing multipart form data.
@@ -29,6 +31,22 @@ func WithIPExtractor(ipExtractor IPExtractor) Option {
 	}
 }
 
+func WithResponseInterceptor(interceptor func(w http.ResponseWriter) (http.ResponseWriter, func())) Option {
+	return func(router *Router) {
+		if interceptor != nil {
+			router.rwInterceptors = append(router.rwInterceptors, interceptor)
+		}
+	}
+}
+
+func WithRequestInterceptor(interceptor func(r *http.Request) (*http.Request, func())) Option {
+	return func(router *Router) {
+		if interceptor != nil {
+			router.reqInterceptors = append(router.reqInterceptors, interceptor)
+		}
+	}
+}
+
 type rPattern struct {
 	pattern    string
 	methods    string
@@ -38,6 +56,8 @@ type rPattern struct {
 type Router struct {
 	*RouterGroup
 
+	rwInterceptors  internal.Interceptors[http.ResponseWriter]
+	reqInterceptors internal.Interceptors[*http.Request]
 	patterns        map[string]struct{}
 	rPatterns       map[string]*rPattern
 	ctxPool         sync.Pool
@@ -58,6 +78,9 @@ func NewRouter(options ...Option) *Router {
 		errorHandler: ErrorHandler,
 		ipExtractor:  RemoteIP,
 	}
+
+	r.rwInterceptors = append(r.rwInterceptors, r.responseInterceptor)
+	r.reqInterceptors = append(r.reqInterceptors, r.requestInterceptor)
 
 	for _, option := range options {
 		option(r)
@@ -123,25 +146,13 @@ func (r *Router) BuildWithMux(mux *http.ServeMux) http.Handler {
 	}))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		res := r.resPool.Get().(*response)
-		res.reset(w)
-		defer func() {
-			res.reset(nil)
-			r.resPool.Put(res)
-		}()
+		w, cancelW := r.rwInterceptors.Apply(w)
+		defer cancelW()
 
-		c := r.ctxPool.Get().(*kContext)
-		defer func() {
-			c.reset()
-			r.ctxPool.Put(c)
-		}()
+		req, cancelReq := r.reqInterceptors.Apply(req)
+		defer cancelReq()
 
-		c.realIP = r.ipExtractor(req)
-
-		ctx := context.WithValue(req.Context(), ctxKey{}, c)
-		req = req.WithContext(ctx)
-
-		httpHandler.ServeHTTP(res, req)
+		httpHandler.ServeHTTP(w, req)
 	})
 }
 
@@ -205,4 +216,31 @@ func (r *Router) build(mux *http.ServeMux, group *RouterGroup, parents []*Router
 			})
 		}
 	}
+}
+
+func (r *Router) responseInterceptor(w http.ResponseWriter) (http.ResponseWriter, func()) {
+	res := r.resPool.Get().(*response)
+	res.reset(w)
+
+	cancel := func() {
+		res.reset(nil)
+		r.resPool.Put(res)
+	}
+
+	return res, cancel
+}
+
+func (r *Router) requestInterceptor(req *http.Request) (*http.Request, func()) {
+	c := r.ctxPool.Get().(*kContext)
+	cancel := func() {
+		c.reset()
+		r.ctxPool.Put(c)
+	}
+
+	c.realIP = r.ipExtractor(req)
+
+	ctx := context.WithValue(req.Context(), ctxKey{}, c)
+	req = req.WithContext(ctx)
+
+	return req, cancel
 }
