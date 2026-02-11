@@ -1,11 +1,11 @@
 module github.com/gowool/keratin/session
 
-go 1.25
+go 1.26
 
 replace github.com/gowool/keratin => ../
 
 require (
-	github.com/gowool/keratin v0.0.0-00010101000000-000000000000
+	github.com/gowool/keratin v0.0.0-20260211175155-759f1de49106
 	github.com/stretchr/testify v1.11.1
 )
 
