@@ -712,7 +712,7 @@ func BenchmarkValuesFromHeader(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		extractor(req)
+		_, _, _ = extractor(req)
 	}
 }
 
@@ -722,7 +722,7 @@ func BenchmarkValuesFromQuery(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		extractor(req)
+		_, _, _ = extractor(req)
 	}
 }
 
@@ -732,7 +732,7 @@ func BenchmarkValuesFromParam(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		extractor(req)
+		_, _, _ = extractor(req)
 	}
 }
 
@@ -743,7 +743,7 @@ func BenchmarkValuesFromCookie(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		extractor(req)
+		_, _, _ = extractor(req)
 	}
 }
 
@@ -755,6 +755,6 @@ func BenchmarkValuesFromForm(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		extractor(req)
+		_, _, _ = extractor(req)
 	}
 }

@@ -155,6 +155,7 @@ func TestKContext_reset(t *testing.T) {
 }
 
 func TestFromContext(t *testing.T) {
+	type difKey struct{}
 	tests := []struct {
 		name     string
 		ctx      context.Context
@@ -175,7 +176,7 @@ func TestFromContext(t *testing.T) {
 		},
 		{
 			name:     "context with different key type returns nilKCtx",
-			ctx:      context.WithValue(context.Background(), "different-key", &kContext{realIP: "10.0.0.1"}),
+			ctx:      context.WithValue(context.Background(), difKey{}, &kContext{realIP: "10.0.0.1"}),
 			wantReal: "",
 			wantNil:  false,
 		},

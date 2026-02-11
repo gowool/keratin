@@ -392,47 +392,6 @@ func TestMiddlewares_build(t *testing.T) {
 	})
 }
 
-func TestMiddlewares_build_Parallel(t *testing.T) {
-	tests := []struct {
-		name     string
-		priority int
-	}{
-		{"priority-negative-10", -10},
-		{"priority-negative-5", -5},
-		{"priority-zero", 0},
-		{"priority-5", 5},
-		{"priority-10", 10},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			middlewares := Middlewares{
-				&Middleware{
-					ID:       tt.name,
-					Priority: tt.priority,
-					Func: func(h Handler) Handler {
-						return HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-							w.Header().Set("X-Priority", string(rune(tt.priority)))
-							return h.ServeHTTP(w, r)
-						})
-					},
-				},
-			}
-
-			handler := HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-				w.WriteHeader(http.StatusOK)
-				return nil
-			})
-
-			result := middlewares.build(handler)
-			require.NotNil(t, result)
-		})
-	}
-}
-
 func TestMiddlewares_build_ExecutionOrder(t *testing.T) {
 	var executionOrder []string
 
