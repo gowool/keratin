@@ -48,24 +48,22 @@ import (
 )
 
 func main() {
-    router := keratin.NewRouter(keratin.ErrorHandlerFunc(func(w http.ResponseWriter, _ *http.Request, err error) {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-    }))
+    router := keratin.NewRouter()
 
-    router.GET("/health", keratin.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) error {
+    router.GET("/health", func(w http.ResponseWriter, _ *http.Request) error {
 		w.WriteHeader(http.StatusOK)
-        _, _ = w.Write([]byte("OK"))
-        return nil
-    }))
+        _, err := w.Write([]byte("OK"))
+        return err
+    })
 
     api := router.Group("/api")
     api.UseFunc(loggingMiddleware)
 
     v1 := api.Group("/v1")
-    v1.GET("/users", listUsers())
-    v1.POST("/users", createUser())
+    v1.Route(http.MethodGet, "/users", listUsers())
+    v1.Route(http.MethodPost, "/users", createUser())
 
-    _ = http.ListenAndServe(":8080", router)
+    _ = http.ListenAndServe(":8080", router.Build())
 }
 
 func loggingMiddleware(next keratin.Handler) keratin.Handler {
@@ -88,8 +86,8 @@ func loggingMiddleware(next keratin.Handler) keratin.Handler {
 func listUsers() keratin.Handler {
 	return keratin.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) error {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("users"))
-		return nil
+		_, err := w.Write([]byte("users"))
+		return err
 	})
 }
 
