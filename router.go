@@ -5,52 +5,83 @@ import (
 	"iter"
 	"maps"
 	"net/http"
+	"strings"
 	"sync"
 )
 
-var _ http.Handler = (*Router)(nil)
+// MultipartMaxMemory is the maximum memory to use when parsing multipart form data.
+var MultipartMaxMemory int64 = 8 * 1024
 
-type ctxErrKey struct{}
+type Option func(*Router)
 
-type ctxErr struct {
-	err error
+func WithErrorHandler(errorHandler ErrorHandlerFunc) Option {
+	return func(router *Router) {
+		if errorHandler != nil {
+			router.errorHandler = errorHandler
+		}
+	}
+}
+
+func WithIPExtractor(ipExtractor IPExtractor) Option {
+	return func(router *Router) {
+		if ipExtractor != nil {
+			router.ipExtractor = ipExtractor
+		}
+	}
+}
+
+type rPattern struct {
+	pattern    string
+	methods    string
+	anyMethods bool
 }
 
 type Router struct {
 	*RouterGroup
 
-	patterns       map[string]struct{}
-	once           sync.Once
-	errPool        sync.Pool
-	resPool        sync.Pool
-	handler        http.Handler
-	errorHandler   ErrorHandler
-	PreMiddlewares Middlewares
+	patterns        map[string]struct{}
+	rPatterns       map[string]*rPattern
+	ctxPool         sync.Pool
+	resPool         sync.Pool
+	ipExtractor     IPExtractor
+	errorHandler    ErrorHandlerFunc
+	PreMiddlewares  Middlewares
+	HTTPMiddlewares HTTPMiddlewares
 }
 
-func NewRouter(errorHandler ErrorHandler) *Router {
-	if errorHandler == nil {
-		panic("router: error handler is required")
-	}
-
-	return &Router{
+func NewRouter(options ...Option) *Router {
+	r := &Router{
 		RouterGroup:  new(RouterGroup),
 		patterns:     make(map[string]struct{}),
+		rPatterns:    make(map[string]*rPattern),
 		resPool:      sync.Pool{New: func() any { return new(response) }},
-		errPool:      sync.Pool{New: func() any { return new(ctxErr) }},
-		errorHandler: errorHandler,
+		ctxPool:      sync.Pool{New: func() any { return new(kContext) }},
+		errorHandler: ErrorHandler,
+		ipExtractor:  RemoteIP,
 	}
-}
 
-// ServeHTTP handles HTTP requests by initializing the router's handler and delegating the request to it.
-func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	r.once.Do(func() { r.handler = r.Build() })
-	r.handler.ServeHTTP(w, req)
+	for _, option := range options {
+		option(r)
+	}
+
+	return r
 }
 
 // Patterns returns a sequence of all route patterns currently registered in the router as strings.
 func (r *Router) Patterns() iter.Seq[string] {
 	return maps.Keys(r.patterns)
+}
+
+// PreHTTPFunc registers one or multiple HTTP middleware to be executed before all middlewares.
+func (r *Router) PreHTTPFunc(middlewareFuncs ...func(next http.Handler) http.Handler) {
+	for _, mdw := range middlewareFuncs {
+		r.HTTPMiddlewares = append(r.HTTPMiddlewares, &HTTPMiddleware{Func: mdw})
+	}
+}
+
+// PreHTTP registers one or multiple HTTP middleware to be executed before all middlewares.
+func (r *Router) PreHTTP(middlewares ...*HTTPMiddleware) {
+	r.HTTPMiddlewares = append(r.HTTPMiddlewares, middlewares...)
 }
 
 // PreFunc registers one or multiple middleware functions which are run before router
@@ -80,10 +111,16 @@ func (r *Router) Build() http.Handler {
 func (r *Router) BuildWithMux(mux *http.ServeMux) http.Handler {
 	r.build(mux, r.RouterGroup, nil)
 
-	handler := r.PreMiddlewares.build(HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-		mux.ServeHTTP(w, r)
+	handler := r.PreMiddlewares.build(HandlerFunc(func(w http.ResponseWriter, req *http.Request) error {
+		mux.ServeHTTP(w, req)
 
-		return r.Context().Value(ctxErrKey{}).(*ctxErr).err
+		return req.Context().Value(ctxKey{}).(*kContext).err
+	}))
+
+	httpHandler := r.HTTPMiddlewares.build(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if err := handler.ServeHTTP(w, req); err != nil {
+			r.errorHandler(w, req, err)
+		}
 	}))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -94,19 +131,18 @@ func (r *Router) BuildWithMux(mux *http.ServeMux) http.Handler {
 			r.resPool.Put(res)
 		}()
 
-		c := r.errPool.Get().(*ctxErr)
+		c := r.ctxPool.Get().(*kContext)
 		defer func() {
-			c.err = nil
-			r.errPool.Put(c)
+			c.reset()
+			r.ctxPool.Put(c)
 		}()
 
-		ctx := context.WithValue(req.Context(), ctxErrKey{}, c)
+		c.realIP = r.ipExtractor(req)
 
+		ctx := context.WithValue(req.Context(), ctxKey{}, c)
 		req = req.WithContext(ctx)
 
-		if err := handler.ServeHTTP(res, req); err != nil {
-			r.errorHandler.ServeHTTP(res, req, err)
-		}
+		httpHandler.ServeHTTP(res, req)
 	})
 }
 
@@ -117,34 +153,60 @@ func (r *Router) build(mux *http.ServeMux, group *RouterGroup, parents []*Router
 			r.build(mux, v, append(parents, group))
 		case *Route:
 			var (
-				routeMiddlewares Middlewares
-				pattern          string
+				pattern     string
+				middlewares Middlewares
 			)
 
-			// add parent groups middlewares
+			// add parent groups Middlewares
 			for _, p := range parents {
-				pattern += p.Prefix
-				routeMiddlewares = append(routeMiddlewares, p.Middlewares...)
+				pattern += p.prefix
+				middlewares = append(middlewares, p.Middlewares...)
 			}
 
-			// add current groups middlewares
-			pattern += group.Prefix
-			routeMiddlewares = append(routeMiddlewares, group.Middlewares...)
+			// add current groups Middlewares
+			pattern += group.prefix
+			middlewares = append(middlewares, group.Middlewares...)
 
-			// add current route middlewares
+			// add current route Middlewares
 			pattern += v.Path
-			routeMiddlewares = append(routeMiddlewares, v.Middlewares...)
+			middlewares = append(middlewares, v.Middlewares...)
 
-			handler := routeMiddlewares.build(v.Handler)
+			rp, ok := r.rPatterns[pattern]
+			if !ok {
+				rp = &rPattern{pattern: pattern}
+				r.rPatterns[pattern] = rp
+			}
 
-			if v.Method != "" {
+			if v.Method == "" {
+				rp.anyMethods = true
+			} else {
+				if rp.methods == "" {
+					rp.methods = v.Method
+				} else {
+					rp.methods += "," + v.Method
+				}
+
 				pattern = v.Method + " " + pattern
 			}
 
 			r.patterns[pattern] = struct{}{}
 
+			handler := middlewares.build(v.Handler)
+
 			mux.HandleFunc(pattern, func(w http.ResponseWriter, req *http.Request) {
-				c := req.Context().Value(ctxErrKey{}).(*ctxErr)
+				c := req.Context().Value(ctxKey{}).(*kContext)
+
+				p := req.Pattern
+				if _, after, ok := strings.Cut(p, " "); ok {
+					p = after
+				}
+
+				if current, ok := r.rPatterns[p]; ok {
+					c.pattern = current.pattern
+					c.methods = current.methods
+					c.anyMethods = current.anyMethods
+				}
+
 				c.err = handler.ServeHTTP(w, req)
 			})
 		}

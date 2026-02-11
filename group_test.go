@@ -58,7 +58,7 @@ func TestRouterGroup_Group(t *testing.T) {
 			newGroup := tt.group.Group(tt.prefix)
 
 			require.NotNil(t, newGroup)
-			assert.Equal(t, tt.prefix, newGroup.Prefix)
+			assert.Equal(t, tt.prefix, newGroup.prefix)
 			assert.Len(t, tt.group.children, tt.expectedLen)
 			assert.Same(t, tt.group.children[initialLen], newGroup)
 		})
@@ -66,16 +66,16 @@ func TestRouterGroup_Group(t *testing.T) {
 }
 
 func TestRouterGroup_Group_Nesting(t *testing.T) {
-	root := &RouterGroup{Prefix: "/"}
+	root := &RouterGroup{prefix: "/"}
 
 	api := root.Group("/api")
 	v1 := api.Group("/v1")
 	users := v1.Group("/users")
 
-	assert.Equal(t, "/", root.Prefix)
-	assert.Equal(t, "/api", api.Prefix)
-	assert.Equal(t, "/v1", v1.Prefix)
-	assert.Equal(t, "/users", users.Prefix)
+	assert.Equal(t, "/", root.prefix)
+	assert.Equal(t, "/api", api.prefix)
+	assert.Equal(t, "/v1", v1.prefix)
+	assert.Equal(t, "/users", users.prefix)
 
 	assert.Len(t, root.children, 1)
 	assert.Len(t, api.children, 1)
@@ -103,7 +103,7 @@ func TestRouterGroup_UseFunc(t *testing.T) {
 			expectedCount: 1,
 		},
 		{
-			name:               "adds multiple middlewares",
+			name:               "adds multiple Middlewares",
 			initialMiddlewares: Middlewares{},
 			middlewareFuncs: []func(Handler) Handler{
 				func(h Handler) Handler {
@@ -125,7 +125,7 @@ func TestRouterGroup_UseFunc(t *testing.T) {
 			expectedCount: 3,
 		},
 		{
-			name: "appends to existing middlewares",
+			name: "appends to existing Middlewares",
 			initialMiddlewares: Middlewares{
 				&Middleware{
 					ID:       "existing",
@@ -361,44 +361,46 @@ func TestRouterGroup_Route(t *testing.T) {
 		name        string
 		method      string
 		path        string
-		handler     Handler
-		group       *RouterGroup
+		handler     func(w http.ResponseWriter, r *http.Request) error
+		group       func() *RouterGroup
 		expectedLen int
 	}{
 		{
 			name:        "creates route with method and path",
 			method:      http.MethodGet,
 			path:        "/users",
-			handler:     HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil }),
-			group:       &RouterGroup{},
+			handler:     func(w http.ResponseWriter, r *http.Request) error { return nil },
+			group:       func() *RouterGroup { return &RouterGroup{} },
 			expectedLen: 1,
 		},
 		{
 			name:        "creates route with custom method",
 			method:      "SEARCH",
 			path:        "/search",
-			handler:     HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil }),
-			group:       &RouterGroup{},
+			handler:     func(w http.ResponseWriter, r *http.Request) error { return nil },
+			group:       func() *RouterGroup { return &RouterGroup{} },
 			expectedLen: 1,
 		},
 		{
 			name:        "creates route with empty method",
 			method:      "",
 			path:        "/any",
-			handler:     HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil }),
-			group:       &RouterGroup{},
+			handler:     func(w http.ResponseWriter, r *http.Request) error { return nil },
+			group:       func() *RouterGroup { return &RouterGroup{} },
 			expectedLen: 1,
 		},
 		{
 			name:    "appends to existing children",
 			method:  http.MethodGet,
 			path:    "/new",
-			handler: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil }),
-			group: &RouterGroup{
-				children: []any{
-					&Route{},
-					&Route{},
-				},
+			handler: func(w http.ResponseWriter, r *http.Request) error { return nil },
+			group: func() *RouterGroup {
+				return &RouterGroup{
+					children: []any{
+						&Route{},
+						&Route{},
+					},
+				}
 			},
 			expectedLen: 3,
 		},
@@ -406,30 +408,44 @@ func TestRouterGroup_Route(t *testing.T) {
 			name:        "creates route with host",
 			method:      http.MethodGet,
 			path:        "example.com/api",
-			handler:     HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil }),
-			group:       &RouterGroup{},
+			handler:     func(w http.ResponseWriter, r *http.Request) error { return nil },
+			group:       func() *RouterGroup { return &RouterGroup{} },
 			expectedLen: 1,
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			initialLen := len(tt.group.children)
-			route := tt.group.Route(tt.method, tt.path, tt.handler)
+		t.Run("[Route] "+tt.name, func(t *testing.T) {
+			group := tt.group()
+			initialLen := len(group.children)
+			route := group.Route(tt.method, tt.path, HandlerFunc(tt.handler))
 
 			require.NotNil(t, route)
 			assert.Equal(t, tt.method, route.Method)
 			assert.Equal(t, tt.path, route.Path)
 			assert.NotNil(t, route.Handler)
-			assert.Len(t, tt.group.children, tt.expectedLen)
-			assert.Equal(t, route, tt.group.children[initialLen])
+			assert.Len(t, group.children, tt.expectedLen)
+			assert.Equal(t, route, group.children[initialLen])
+		})
+
+		t.Run("[RouteFunc] "+tt.name, func(t *testing.T) {
+			group := tt.group()
+			initialLen := len(group.children)
+			route := group.RouteFunc(tt.method, tt.path, tt.handler)
+
+			require.NotNil(t, route)
+			assert.Equal(t, tt.method, route.Method)
+			assert.Equal(t, tt.path, route.Path)
+			assert.NotNil(t, route.Handler)
+			assert.Len(t, group.children, tt.expectedLen)
+			assert.Equal(t, route, group.children[initialLen])
 		})
 	}
 }
 
 func TestRouterGroup_Any(t *testing.T) {
 	group := &RouterGroup{}
-	handler := HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil })
+	handler := func(w http.ResponseWriter, r *http.Request) error { return nil }
 
 	route := group.Any("/any", handler)
 
@@ -442,7 +458,7 @@ func TestRouterGroup_Any(t *testing.T) {
 
 func TestRouterGroup_GET(t *testing.T) {
 	group := &RouterGroup{}
-	handler := HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil })
+	handler := func(w http.ResponseWriter, r *http.Request) error { return nil }
 
 	route := group.GET("/users", handler)
 
@@ -455,7 +471,7 @@ func TestRouterGroup_GET(t *testing.T) {
 
 func TestRouterGroup_SEARCH(t *testing.T) {
 	group := &RouterGroup{}
-	handler := HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil })
+	handler := func(w http.ResponseWriter, r *http.Request) error { return nil }
 
 	route := group.SEARCH("/search", handler)
 
@@ -468,7 +484,7 @@ func TestRouterGroup_SEARCH(t *testing.T) {
 
 func TestRouterGroup_POST(t *testing.T) {
 	group := &RouterGroup{}
-	handler := HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil })
+	handler := func(w http.ResponseWriter, r *http.Request) error { return nil }
 
 	route := group.POST("/users", handler)
 
@@ -481,7 +497,7 @@ func TestRouterGroup_POST(t *testing.T) {
 
 func TestRouterGroup_DELETE(t *testing.T) {
 	group := &RouterGroup{}
-	handler := HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil })
+	handler := func(w http.ResponseWriter, r *http.Request) error { return nil }
 
 	route := group.DELETE("/users/:id", handler)
 
@@ -494,7 +510,7 @@ func TestRouterGroup_DELETE(t *testing.T) {
 
 func TestRouterGroup_PATCH(t *testing.T) {
 	group := &RouterGroup{}
-	handler := HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil })
+	handler := func(w http.ResponseWriter, r *http.Request) error { return nil }
 
 	route := group.PATCH("/users/:id", handler)
 
@@ -507,7 +523,7 @@ func TestRouterGroup_PATCH(t *testing.T) {
 
 func TestRouterGroup_PUT(t *testing.T) {
 	group := &RouterGroup{}
-	handler := HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil })
+	handler := func(w http.ResponseWriter, r *http.Request) error { return nil }
 
 	route := group.PUT("/users/:id", handler)
 
@@ -520,7 +536,7 @@ func TestRouterGroup_PUT(t *testing.T) {
 
 func TestRouterGroup_HEAD(t *testing.T) {
 	group := &RouterGroup{}
-	handler := HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil })
+	handler := func(w http.ResponseWriter, r *http.Request) error { return nil }
 
 	route := group.HEAD("/users", handler)
 
@@ -533,7 +549,7 @@ func TestRouterGroup_HEAD(t *testing.T) {
 
 func TestRouterGroup_OPTIONS(t *testing.T) {
 	group := &RouterGroup{}
-	handler := HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil })
+	handler := func(w http.ResponseWriter, r *http.Request) error { return nil }
 
 	route := group.OPTIONS("/users", handler)
 
@@ -544,21 +560,49 @@ func TestRouterGroup_OPTIONS(t *testing.T) {
 	assert.Len(t, group.children, 1)
 }
 
+func TestRouterGroup_CONNECT(t *testing.T) {
+	group := &RouterGroup{}
+	handler := func(w http.ResponseWriter, r *http.Request) error { return nil }
+
+	route := group.CONNECT("/users", handler)
+
+	require.NotNil(t, route)
+	assert.Equal(t, http.MethodConnect, route.Method)
+	assert.Equal(t, "/users", route.Path)
+	assert.NotNil(t, route.Handler)
+	assert.Len(t, group.children, 1)
+}
+
+func TestRouterGroup_TRACE(t *testing.T) {
+	group := &RouterGroup{}
+	handler := func(w http.ResponseWriter, r *http.Request) error { return nil }
+
+	route := group.TRACE("/users", handler)
+
+	require.NotNil(t, route)
+	assert.Equal(t, http.MethodTrace, route.Method)
+	assert.Equal(t, "/users", route.Path)
+	assert.NotNil(t, route.Handler)
+	assert.Len(t, group.children, 1)
+}
+
 func TestRouterGroup_AllHTTPMethods(t *testing.T) {
 	group := &RouterGroup{}
-	handler := HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil })
+	handler := func(w http.ResponseWriter, r *http.Request) error { return nil }
 
 	group.Any("/any", handler)
 	group.GET("/get", handler)
-	group.SEARCH("/search", handler)
-	group.POST("/post", handler)
-	group.DELETE("/delete", handler)
-	group.PATCH("/patch", handler)
-	group.PUT("/put", handler)
 	group.HEAD("/head", handler)
+	group.POST("/post", handler)
+	group.PUT("/put", handler)
+	group.PATCH("/patch", handler)
+	group.DELETE("/delete", handler)
+	group.CONNECT("/connect", handler)
 	group.OPTIONS("/options", handler)
+	group.TRACE("/trace", handler)
+	group.SEARCH("/search", handler)
 
-	assert.Len(t, group.children, 9)
+	assert.Len(t, group.children, 11)
 
 	routes := 0
 	groups := 0
@@ -571,14 +615,14 @@ func TestRouterGroup_AllHTTPMethods(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, 9, routes)
+	assert.Equal(t, 11, routes)
 	assert.Equal(t, 0, groups)
 }
 
 func TestRouterGroup_ComplexHierarchy(t *testing.T) {
-	handler := HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil })
+	handler := func(w http.ResponseWriter, r *http.Request) error { return nil }
 
-	root := &RouterGroup{Prefix: "/"}
+	root := &RouterGroup{prefix: "/"}
 
 	api := root.Group("/api").UseFunc(func(h Handler) Handler {
 		return HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
@@ -627,9 +671,9 @@ func TestRouterGroup_ComplexHierarchy(t *testing.T) {
 func TestRouterGroup_RouteWithMiddleware(t *testing.T) {
 	group := &RouterGroup{}
 
-	route := group.GET("/users", HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+	route := group.GET("/users", func(w http.ResponseWriter, r *http.Request) error {
 		return nil
-	})).UseFunc(func(h Handler) Handler {
+	}).UseFunc(func(h Handler) Handler {
 		return HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
 			return h.ServeHTTP(w, r)
 		})
@@ -652,9 +696,9 @@ func TestRouterGroup_RouteWithMiddleware(t *testing.T) {
 }
 
 func TestRouterGroup_Chaining(t *testing.T) {
-	handler := HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil })
+	handler := func(w http.ResponseWriter, r *http.Request) error { return nil }
 
-	group := &RouterGroup{Prefix: "/"}
+	group := &RouterGroup{prefix: "/"}
 
 	result := group.
 		Group("/api").
@@ -672,9 +716,9 @@ func TestRouterGroup_Chaining(t *testing.T) {
 }
 
 func TestRouterGroup_MixedChildren(t *testing.T) {
-	handler := HandlerFunc(func(w http.ResponseWriter, r *http.Request) error { return nil })
+	handler := func(w http.ResponseWriter, r *http.Request) error { return nil }
 
-	group := &RouterGroup{Prefix: "/"}
+	group := &RouterGroup{prefix: "/"}
 
 	group.GET("/route1", handler)
 	group.Group("/group1")
@@ -704,7 +748,7 @@ func TestRouterGroup_EmptyPrefix(t *testing.T) {
 	group := &RouterGroup{}
 
 	subGroup := group.Group("")
-	assert.Equal(t, "", subGroup.Prefix)
+	assert.Equal(t, "", subGroup.prefix)
 	assert.Len(t, group.children, 1)
 }
 

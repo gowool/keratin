@@ -30,7 +30,7 @@ func TestRoute_UseFunc(t *testing.T) {
 			expectedCount: 1,
 		},
 		{
-			name:               "adds multiple middlewares",
+			name:               "adds multiple Middlewares",
 			initialMiddlewares: Middlewares{},
 			middlewareFuncs: []func(Handler) Handler{
 				func(h Handler) Handler {
@@ -55,7 +55,7 @@ func TestRoute_UseFunc(t *testing.T) {
 			expectedCount: 3,
 		},
 		{
-			name: "appends to existing middlewares",
+			name: "appends to existing Middlewares",
 			initialMiddlewares: Middlewares{
 				&Middleware{
 					ID:       "existing-1",
@@ -169,7 +169,7 @@ func TestRoute_Use(t *testing.T) {
 			expectedCount: 1,
 		},
 		{
-			name:               "adds multiple middlewares",
+			name:               "adds multiple Middlewares",
 			initialMiddlewares: Middlewares{},
 			middlewares: []*Middleware{
 				{
@@ -203,7 +203,7 @@ func TestRoute_Use(t *testing.T) {
 			expectedCount: 3,
 		},
 		{
-			name: "appends to existing middlewares",
+			name: "appends to existing Middlewares",
 			initialMiddlewares: Middlewares{
 				&Middleware{
 					ID:       "existing-1",
@@ -229,7 +229,7 @@ func TestRoute_Use(t *testing.T) {
 			expectedCount: 2,
 		},
 		{
-			name:               "empty middlewares list",
+			name:               "empty Middlewares list",
 			initialMiddlewares: Middlewares{},
 			middlewares:        []*Middleware{},
 			expectedCount:      0,

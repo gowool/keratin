@@ -281,11 +281,7 @@ func TestStaticFS(t *testing.T) {
 		fsys := os.DirFS(tmpDir)
 		handler := StaticFS(fsys, "path", false)
 
-		router := NewRouter(ErrorHandlerFunc(func(w http.ResponseWriter, r *http.Request, err error) {
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-			}
-		}))
+		router := NewRouter()
 		router.GET("/files/{path...}", handler)
 
 		w := httptest.NewRecorder()
@@ -302,7 +298,7 @@ func TestStaticFS(t *testing.T) {
 		fsys := os.DirFS(tmpDir)
 		handler := StaticFS(fsys, "path", false)
 
-		router := NewRouter(ErrorHandlerFunc(func(w http.ResponseWriter, r *http.Request, err error) {
+		router := NewRouter(WithErrorHandler(func(w http.ResponseWriter, r *http.Request, err error) {
 			if err != nil {
 				w.WriteHeader(http.StatusNotFound)
 			}
@@ -322,7 +318,7 @@ func TestStaticFS(t *testing.T) {
 		fsys := os.DirFS(tmpDir)
 		handler := StaticFS(fsys, "path", false)
 
-		router := NewRouter(ErrorHandlerFunc(func(w http.ResponseWriter, r *http.Request, err error) {
+		router := NewRouter(WithErrorHandler(func(w http.ResponseWriter, r *http.Request, err error) {
 			if err != nil {
 				w.WriteHeader(http.StatusNotFound)
 			}
@@ -346,11 +342,7 @@ func TestStaticFS(t *testing.T) {
 		fsys := os.DirFS(tmpDir)
 		handler := StaticFS(fsys, "path", false)
 
-		router := NewRouter(ErrorHandlerFunc(func(w http.ResponseWriter, r *http.Request, err error) {
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-			}
-		}))
+		router := NewRouter()
 		router.GET("/files/{path...}", handler)
 
 		w := httptest.NewRecorder()
@@ -371,7 +363,7 @@ func TestStaticFS(t *testing.T) {
 		fsys := os.DirFS(tmpDir)
 		handler := StaticFS(fsys, "path", false)
 
-		router := NewRouter(ErrorHandlerFunc(func(w http.ResponseWriter, r *http.Request, err error) {
+		router := NewRouter(WithErrorHandler(func(w http.ResponseWriter, r *http.Request, err error) {
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 			}
@@ -396,7 +388,7 @@ func TestStaticFS(t *testing.T) {
 		fsys := os.DirFS(tmpDir)
 		handler := StaticFS(fsys, "path", false)
 
-		router := NewRouter(ErrorHandlerFunc(func(w http.ResponseWriter, r *http.Request, err error) {
+		router := NewRouter(WithErrorHandler(func(w http.ResponseWriter, r *http.Request, err error) {
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 			}
@@ -424,7 +416,7 @@ func TestStaticFS(t *testing.T) {
 			CacheControl("no-cache"),
 		)
 
-		router := NewRouter(ErrorHandlerFunc(func(w http.ResponseWriter, r *http.Request, err error) {
+		router := NewRouter(WithErrorHandler(func(w http.ResponseWriter, r *http.Request, err error) {
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 			}
@@ -501,7 +493,7 @@ func TestStaticFS_IndexFallback(t *testing.T) {
 			fsys := os.DirFS(tmpDir)
 			handler := StaticFS(fsys, "path", tt.indexFallback)
 
-			router := NewRouter(ErrorHandlerFunc(func(w http.ResponseWriter, r *http.Request, err error) {
+			router := NewRouter(WithErrorHandler(func(w http.ResponseWriter, r *http.Request, err error) {
 				if err != nil {
 					if errors.Is(err, ErrFileNotFound) {
 						w.WriteHeader(http.StatusNotFound)

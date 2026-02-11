@@ -17,19 +17,19 @@ import (
 
 type mockHandler struct{}
 
-func (m *mockHandler) Enabled(ctx context.Context, level slog.Level) bool {
+func (m *mockHandler) Enabled(context.Context, slog.Level) bool {
 	return true
 }
 
-func (m *mockHandler) Handle(ctx context.Context, r slog.Record) error {
+func (m *mockHandler) Handle(context.Context, slog.Record) error {
 	return nil
 }
 
-func (m *mockHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+func (m *mockHandler) WithAttrs([]slog.Attr) slog.Handler {
 	return m
 }
 
-func (m *mockHandler) WithGroup(name string) slog.Handler {
+func (m *mockHandler) WithGroup(string) slog.Handler {
 	return m
 }
 

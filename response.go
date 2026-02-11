@@ -2,11 +2,14 @@ package keratin
 
 import (
 	"bufio"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+
+	"github.com/gowool/keratin/internal"
 )
 
 var (
@@ -226,4 +229,137 @@ func (r *response) ReadFrom(reader io.Reader) (n int64, err error) {
 			return
 		}
 	}
+}
+
+func writeJSON(w http.ResponseWriter, status int, i any, indent string) error {
+	w = newDelayedStatusWriter(w)
+
+	w.Header().Set(HeaderContentType, MIMEApplicationJSON)
+	w.WriteHeader(status)
+
+	return internal.MarshalJSON(w, i, indent)
+}
+
+// JSON sends a JSON response with status code.
+func JSON(w http.ResponseWriter, status int, i any) error {
+	return writeJSON(w, status, i, "")
+}
+
+// JSONPretty sends a pretty-print JSON with status code.
+func JSONPretty(w http.ResponseWriter, status int, i any, indent string) error {
+	return writeJSON(w, status, i, indent)
+}
+
+func JSONBlob(w http.ResponseWriter, status int, b []byte) error {
+	return Blob(w, status, MIMEApplicationJSON, b)
+}
+
+// HTML writes an HTML response.
+func HTML(w http.ResponseWriter, status int, data string) error {
+	return HTMLBlob(w, status, internal.StringToBytes(data))
+}
+
+// HTMLBlob sends an HTTP blob response with status code.
+func HTMLBlob(w http.ResponseWriter, status int, b []byte) error {
+	return Blob(w, status, MIMETextHTMLCharsetUTF8, b)
+}
+
+// TextPlain writes a plain string response.
+func TextPlain(w http.ResponseWriter, status int, data string) error {
+	return Blob(w, status, MIMETextPlainCharsetUTF8, internal.StringToBytes(data))
+}
+
+func writeXML(w http.ResponseWriter, status int, i any, indent string) (err error) {
+	if w.Header().Get(HeaderContentType) == "" {
+		w.Header().Set(HeaderContentType, MIMEApplicationXMLCharsetUTF8)
+	}
+	w.WriteHeader(status)
+
+	enc := xml.NewEncoder(w)
+	enc.Indent("", indent)
+
+	defer func() { err = errors.Join(err, enc.Close()) }()
+
+	if _, err = w.Write(internal.StringToBytes(xml.Header)); err != nil {
+		return
+	}
+
+	err = enc.Encode(i)
+	return
+}
+
+// XML writes an XML response.
+// It automatically prepends the generic [xml.Header] string to the response.
+func XML(w http.ResponseWriter, status int, i any) error {
+	return writeXML(w, status, i, "")
+}
+
+// XMLPretty sends a pretty-print XML with status code.
+// It automatically prepends the generic [xml.Header] string to the response.
+func XMLPretty(w http.ResponseWriter, status int, i any, indent string) error {
+	return writeXML(w, status, i, indent)
+}
+
+// XMLBlob sends an XML blob response with status code.
+func XMLBlob(w http.ResponseWriter, status int, b []byte) error {
+	return Blob(w, status, MIMEApplicationXMLCharsetUTF8, b)
+}
+
+// Blob writes a blob (bytes slice) response.
+func Blob(w http.ResponseWriter, status int, contentType string, b []byte) error {
+	w.Header().Set(HeaderContentType, contentType)
+	w.WriteHeader(status)
+	_, err := w.Write(b)
+	return err
+}
+
+// Stream streams the specified reader into the response.
+func Stream(w http.ResponseWriter, status int, contentType string, reader io.Reader) error {
+	w.Header().Set(HeaderContentType, contentType)
+	w.WriteHeader(status)
+	_, err := io.Copy(w, reader)
+	return err
+}
+
+// delayedStatusWriter is a wrapper around http.ResponseWriter that delays writing the status code until first Write is called.
+// This allows (global) error handler to decide correct status code to be sent to the client.
+type delayedStatusWriter struct {
+	http.ResponseWriter
+	commited bool
+	status   int
+}
+
+func newDelayedStatusWriter(w http.ResponseWriter) *delayedStatusWriter {
+	return &delayedStatusWriter{ResponseWriter: w}
+}
+
+func (w *delayedStatusWriter) WriteHeader(statusCode int) {
+	// in case something else writes status code explicitly before us we need mark response commited
+	w.status = statusCode
+}
+
+func (w *delayedStatusWriter) Write(data []byte) (int, error) {
+	if !w.commited {
+		w.commited = true
+		if w.status == 0 {
+			w.status = http.StatusOK
+		}
+		w.ResponseWriter.WriteHeader(w.status)
+	}
+	return w.ResponseWriter.Write(data)
+}
+
+func (w *delayedStatusWriter) Flush() {
+	err := http.NewResponseController(w.ResponseWriter).Flush()
+	if err != nil && errors.Is(err, http.ErrNotSupported) {
+		panic(errors.New("response writer flushing is not supported"))
+	}
+}
+
+func (w *delayedStatusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return http.NewResponseController(w.ResponseWriter).Hijack()
+}
+
+func (w *delayedStatusWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
 }

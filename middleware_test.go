@@ -18,7 +18,7 @@ func TestMiddlewares_build(t *testing.T) {
 		validate    func(t *testing.T, result Handler, middlewares Middlewares)
 	}{
 		{
-			name:        "empty middlewares returns original handler",
+			name:        "empty Middlewares returns original handler",
 			middlewares: Middlewares{},
 			setup: func() Handler {
 				calls := 0
@@ -68,7 +68,7 @@ func TestMiddlewares_build(t *testing.T) {
 			},
 		},
 		{
-			name: "multiple middlewares wrap in priority order",
+			name: "multiple Middlewares wrap in priority order",
 			middlewares: Middlewares{
 				&Middleware{
 					ID:       "middleware-1",
@@ -167,7 +167,7 @@ func TestMiddlewares_build(t *testing.T) {
 			},
 		},
 		{
-			name: "middlewares with same priority maintain stable order",
+			name: "Middlewares with same priority maintain stable order",
 			middlewares: Middlewares{
 				&Middleware{
 					ID:       "first",
@@ -218,7 +218,7 @@ func TestMiddlewares_build(t *testing.T) {
 			},
 		},
 		{
-			name: "negative priority middlewares execute first",
+			name: "negative priority Middlewares execute first",
 			middlewares: Middlewares{
 				&Middleware{
 					ID:       "zero",
@@ -343,7 +343,7 @@ func TestMiddlewares_build(t *testing.T) {
 		})
 	}
 
-	t.Run("multiple middlewares with empty IDs generate unique UUIDs", func(t *testing.T) {
+	t.Run("multiple Middlewares with empty IDs generate unique UUIDs", func(t *testing.T) {
 		middlewares := Middlewares{
 			&Middleware{
 				ID:       "",

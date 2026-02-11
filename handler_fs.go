@@ -60,7 +60,7 @@ func contentDisposition(name, dispositionType string) BeforeServeFunc {
 }
 
 // FileFS serves the specified filename from fsys.
-func FileFS(fsys fs.FS, filename string, beforeServe ...BeforeServeFunc) Handler {
+func FileFS(fsys fs.FS, filename string, beforeServe ...BeforeServeFunc) HandlerFunc {
 	if fsys == nil {
 		panic("fsys is nil")
 	}
@@ -68,7 +68,7 @@ func FileFS(fsys fs.FS, filename string, beforeServe ...BeforeServeFunc) Handler
 		panic("filename is empty")
 	}
 
-	return HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+	return func(w http.ResponseWriter, r *http.Request) error {
 		f, err := fsys.Open(filename)
 		if err != nil {
 			return errors.Join(ErrFileNotFound, err)
@@ -107,7 +107,7 @@ func FileFS(fsys fs.FS, filename string, beforeServe ...BeforeServeFunc) Handler
 		http.ServeContent(w, r, fi.Name(), fi.ModTime(), frs)
 
 		return nil
-	})
+	}
 }
 
 // StaticFS serve static directory content from fsys.
@@ -124,8 +124,8 @@ func FileFS(fsys fs.FS, filename string, beforeServe ...BeforeServeFunc) Handler
 //
 //	fsys := os.DirFS("./public")
 //	router.GET("/files/{path...}", StaticFS(fsys, "path", false))
-func StaticFS(fsys fs.FS, param string, indexFallback bool, beforeServe ...BeforeServeFunc) Handler {
-	return HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+func StaticFS(fsys fs.FS, param string, indexFallback bool, beforeServe ...BeforeServeFunc) HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) error {
 		filename := r.PathValue(param)
 		filename = filepath.ToSlash(filepath.Clean(strings.TrimPrefix(filename, "/")))
 
@@ -176,7 +176,7 @@ func StaticFS(fsys fs.FS, param string, indexFallback bool, beforeServe ...Befor
 		}
 
 		return fileErr
-	})
+	}
 }
 
 // safeRedirectPath normalizes the path string by replacing all beginning slashes

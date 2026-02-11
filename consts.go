@@ -92,7 +92,12 @@ const (
 	HeaderXCSRFToken                      = "X-CSRF-Token"
 	HeaderReferrerPolicy                  = "Referrer-Policy"
 
-	// Cloudflare
+	// HeaderCFIPCountry cloudflare country code
 	// https://developers.cloudflare.com/fundamentals/reference/http-headers/#cf-ipcountry
 	HeaderCFIPCountry = "CF-IPCountry"
+
+	// HeaderSecFetchSite fetch metadata request header indicates the relationship between a request initiator's
+	// origin and the origin of the requested resource.
+	// See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Site
+	HeaderSecFetchSite = "Sec-Fetch-Site"
 )
