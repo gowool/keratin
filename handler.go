@@ -25,8 +25,8 @@ func ErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
 
 	code := HTTPErrorStatusCode(err)
 
-	var httpErr *HTTPError
-	if !errors.As(err, &httpErr) {
+	httpErr, ok := errors.AsType[*HTTPError](err)
+	if !ok {
 		httpErr = NewHTTPError(code, http.StatusText(code))
 	}
 

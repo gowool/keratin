@@ -495,14 +495,15 @@ func TestHTTPError_Integration(t *testing.T) {
 		assert.Equal(t, baseErr, baseUnwrapped)
 	})
 
-	t.Run("errors.Is and errors.As", func(t *testing.T) {
+	t.Run("errors.Is and errors.AsType", func(t *testing.T) {
 		baseErr := errors.New("base error")
 		httpErr := NewHTTPError(http.StatusBadRequest, "bad request").Wrap(baseErr)
 
 		assert.True(t, errors.Is(httpErr, baseErr))
 
-		var unwrapped *HTTPError
-		assert.True(t, errors.As(httpErr, &unwrapped))
+		unwrapped, ok := errors.AsType[*HTTPError](httpErr)
+
+		assert.True(t, ok)
 		assert.Equal(t, http.StatusBadRequest, unwrapped.StatusCode())
 	})
 }

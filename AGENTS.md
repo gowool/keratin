@@ -88,7 +88,7 @@ golangci-lint run -v --timeout=5m --build-tags=race --output.code-climate.path g
 
 ### Error Handling
 - Define errors as package-level variables using `errors.New()`
-- Use `errors.Is()` and `errors.As()` for error checking
+- Use `errors.Is()` and `errors.AsType()` for error checking
 - Wrap errors with context using `fmt.Errorf("msg: %w", err)`
 - Return nil pointers for "not found" cases, don't wrap in error
 - Use `fmt.Errorf` for errors with dynamic messages
@@ -148,7 +148,7 @@ golangci-lint run -v --timeout=5m --build-tags=race --output.code-climate.path g
 - Reset pooled objects before returning to pool
 - Use pool in defer for proper cleanup
 
-### Go 1.25 Features
+### Go 1.26 Features
 - Use `iter.Seq[T]` for sequences when appropriate
 - Leverage standard library functions from `maps`, `slices`, `iter` packages
 
