@@ -7,6 +7,14 @@ import (
 	"github.com/gowool/keratin/internal"
 )
 
+func Pattern(r *http.Request) string {
+	pattern := r.Pattern
+	if index := strings.IndexRune(pattern, ' '); index > -1 {
+		pattern = pattern[index+1:]
+	}
+	return pattern
+}
+
 // Scheme returns the HTTP protocol scheme, `http` or `https`.
 func Scheme(r *http.Request) string {
 	// Can't use `r.Request.URL.Scheme`

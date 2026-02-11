@@ -5,7 +5,6 @@ import (
 	"iter"
 	"maps"
 	"net/http"
-	"strings"
 	"sync"
 )
 
@@ -196,12 +195,7 @@ func (r *Router) build(mux *http.ServeMux, group *RouterGroup, parents []*Router
 			mux.HandleFunc(pattern, func(w http.ResponseWriter, req *http.Request) {
 				c := req.Context().Value(ctxKey{}).(*kContext)
 
-				p := req.Pattern
-				if _, after, ok := strings.Cut(p, " "); ok {
-					p = after
-				}
-
-				if current, ok := r.rPatterns[p]; ok {
+				if current, ok := r.rPatterns[Pattern(req)]; ok {
 					c.pattern = current.pattern
 					c.methods = current.methods
 					c.anyMethods = current.anyMethods
