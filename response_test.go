@@ -1,6 +1,7 @@
 package keratin
 
 import (
+	"encoding/xml"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -1162,5 +1163,559 @@ func TestResponse_Write_WithNilWriter(t *testing.T) {
 		assert.Panics(t, func() {
 			_, _ = r.Write([]byte("test"))
 		})
+	})
+}
+
+func TestJSON(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		data       any
+		wantBody   string
+		wantHeader string
+	}{
+		{
+			name:       "sends JSON with status code",
+			status:     http.StatusOK,
+			data:       map[string]string{"message": "hello"},
+			wantBody:   `{"message":"hello"}` + "\n",
+			wantHeader: MIMEApplicationJSON,
+		},
+		{
+			name:       "sends JSON with 201 status",
+			status:     http.StatusCreated,
+			data:       map[string]int{"id": 123},
+			wantBody:   `{"id":123}` + "\n",
+			wantHeader: MIMEApplicationJSON,
+		},
+		{
+			name:       "sends nested JSON",
+			status:     http.StatusOK,
+			data:       map[string]any{"user": map[string]string{"name": "Alice"}},
+			wantBody:   `{"user":{"name":"Alice"}}` + "\n",
+			wantHeader: MIMEApplicationJSON,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			err := JSON(rec, tt.status, tt.data)
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.status, rec.Code)
+			assert.Equal(t, tt.wantBody, rec.Body.String())
+			assert.Equal(t, tt.wantHeader, rec.Header().Get(HeaderContentType))
+		})
+	}
+}
+
+func TestJSONPretty(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		data       any
+		indent     string
+		wantHeader string
+	}{
+		{
+			name:       "sends pretty JSON with 2 space indent",
+			status:     http.StatusOK,
+			data:       map[string]string{"message": "hello"},
+			indent:     "  ",
+			wantHeader: MIMEApplicationJSON,
+		},
+		{
+			name:       "sends pretty JSON with tab indent",
+			status:     http.StatusOK,
+			data:       map[string]int{"id": 123},
+			indent:     "\t",
+			wantHeader: MIMEApplicationJSON,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			err := JSONPretty(rec, tt.status, tt.data, tt.indent)
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.status, rec.Code)
+			assert.Contains(t, rec.Body.String(), tt.indent)
+			assert.Equal(t, tt.wantHeader, rec.Header().Get(HeaderContentType))
+		})
+	}
+}
+
+func TestJSONBlob(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		data       []byte
+		wantHeader string
+	}{
+		{
+			name:       "sends JSON blob with status",
+			status:     http.StatusOK,
+			data:       []byte(`{"message":"hello"}`),
+			wantHeader: MIMEApplicationJSON,
+		},
+		{
+			name:       "sends JSON blob with 201 status",
+			status:     http.StatusCreated,
+			data:       []byte(`{"id":123}`),
+			wantHeader: MIMEApplicationJSON,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			err := JSONBlob(rec, tt.status, tt.data)
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.status, rec.Code)
+			assert.Equal(t, string(tt.data), rec.Body.String())
+			assert.Equal(t, tt.wantHeader, rec.Header().Get(HeaderContentType))
+		})
+	}
+}
+
+func TestHTML(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		data       string
+		wantBody   string
+		wantHeader string
+	}{
+		{
+			name:       "sends HTML with status",
+			status:     http.StatusOK,
+			data:       "<h1>Hello</h1>",
+			wantBody:   "<h1>Hello</h1>",
+			wantHeader: MIMETextHTMLCharsetUTF8,
+		},
+		{
+			name:       "sends HTML with 201 status",
+			status:     http.StatusCreated,
+			data:       "<p>Created</p>",
+			wantBody:   "<p>Created</p>",
+			wantHeader: MIMETextHTMLCharsetUTF8,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			err := HTML(rec, tt.status, tt.data)
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.status, rec.Code)
+			assert.Equal(t, tt.wantBody, rec.Body.String())
+			assert.Equal(t, tt.wantHeader, rec.Header().Get(HeaderContentType))
+		})
+	}
+}
+
+func TestHTMLBlob(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		data       []byte
+		wantBody   string
+		wantHeader string
+	}{
+		{
+			name:       "sends HTML blob with status",
+			status:     http.StatusOK,
+			data:       []byte("<h1>Hello</h1>"),
+			wantBody:   "<h1>Hello</h1>",
+			wantHeader: MIMETextHTMLCharsetUTF8,
+		},
+		{
+			name:       "sends HTML blob with 201 status",
+			status:     http.StatusCreated,
+			data:       []byte("<p>Created</p>"),
+			wantBody:   "<p>Created</p>",
+			wantHeader: MIMETextHTMLCharsetUTF8,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			err := HTMLBlob(rec, tt.status, tt.data)
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.status, rec.Code)
+			assert.Equal(t, tt.wantBody, rec.Body.String())
+			assert.Equal(t, tt.wantHeader, rec.Header().Get(HeaderContentType))
+		})
+	}
+}
+
+func TestTextPlain(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		data       string
+		wantBody   string
+		wantHeader string
+	}{
+		{
+			name:       "sends plain text with status",
+			status:     http.StatusOK,
+			data:       "Hello, World!",
+			wantBody:   "Hello, World!",
+			wantHeader: MIMETextPlainCharsetUTF8,
+		},
+		{
+			name:       "sends plain text with 201 status",
+			status:     http.StatusCreated,
+			data:       "Created successfully",
+			wantBody:   "Created successfully",
+			wantHeader: MIMETextPlainCharsetUTF8,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			err := TextPlain(rec, tt.status, tt.data)
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.status, rec.Code)
+			assert.Equal(t, tt.wantBody, rec.Body.String())
+			assert.Equal(t, tt.wantHeader, rec.Header().Get(HeaderContentType))
+		})
+	}
+}
+
+func TestXML(t *testing.T) {
+	type Message struct {
+		Message string `xml:"message"`
+	}
+	type ID struct {
+		ID int `xml:"id"`
+	}
+
+	tests := []struct {
+		name       string
+		status     int
+		data       any
+		wantHeader string
+	}{
+		{
+			name:       "sends XML with status",
+			status:     http.StatusOK,
+			data:       Message{Message: "hello"},
+			wantHeader: MIMEApplicationXMLCharsetUTF8,
+		},
+		{
+			name:       "sends XML with 201 status",
+			status:     http.StatusCreated,
+			data:       ID{ID: 123},
+			wantHeader: MIMEApplicationXMLCharsetUTF8,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			err := XML(rec, tt.status, tt.data)
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.status, rec.Code)
+			assert.Contains(t, rec.Body.String(), xml.Header)
+			assert.Equal(t, tt.wantHeader, rec.Header().Get(HeaderContentType))
+		})
+	}
+}
+
+func TestXMLPretty(t *testing.T) {
+	type Message struct {
+		Message string `xml:"message"`
+	}
+	type ID struct {
+		ID int `xml:"id"`
+	}
+
+	tests := []struct {
+		name       string
+		status     int
+		data       any
+		indent     string
+		wantHeader string
+	}{
+		{
+			name:       "sends pretty XML with 2 space indent",
+			status:     http.StatusOK,
+			data:       Message{Message: "hello"},
+			indent:     "  ",
+			wantHeader: MIMEApplicationXMLCharsetUTF8,
+		},
+		{
+			name:       "sends pretty XML with tab indent",
+			status:     http.StatusOK,
+			data:       ID{ID: 123},
+			indent:     "\t",
+			wantHeader: MIMEApplicationXMLCharsetUTF8,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			err := XMLPretty(rec, tt.status, tt.data, tt.indent)
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.status, rec.Code)
+			assert.Contains(t, rec.Body.String(), tt.indent)
+			assert.Contains(t, rec.Body.String(), xml.Header)
+			assert.Equal(t, tt.wantHeader, rec.Header().Get(HeaderContentType))
+		})
+	}
+}
+
+func TestXMLBlob(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		data       []byte
+		wantHeader string
+	}{
+		{
+			name:       "sends XML blob with status",
+			status:     http.StatusOK,
+			data:       []byte(xml.Header + `<message>hello</message>`),
+			wantHeader: MIMEApplicationXMLCharsetUTF8,
+		},
+		{
+			name:       "sends XML blob with 201 status",
+			status:     http.StatusCreated,
+			data:       []byte(xml.Header + `<root><id>123</id></root>`),
+			wantHeader: MIMEApplicationXMLCharsetUTF8,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			err := XMLBlob(rec, tt.status, tt.data)
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.status, rec.Code)
+			assert.Equal(t, string(tt.data), rec.Body.String())
+			assert.Equal(t, tt.wantHeader, rec.Header().Get(HeaderContentType))
+		})
+	}
+}
+
+func TestBlob(t *testing.T) {
+	tests := []struct {
+		name        string
+		status      int
+		contentType string
+		data        []byte
+		wantBody    string
+		wantHeader  string
+	}{
+		{
+			name:        "sends blob with custom content type",
+			status:      http.StatusOK,
+			contentType: "application/octet-stream",
+			data:        []byte("binary data"),
+			wantBody:    "binary data",
+			wantHeader:  "application/octet-stream",
+		},
+		{
+			name:        "sends blob with JSON content type",
+			status:      http.StatusCreated,
+			contentType: MIMEApplicationJSON,
+			data:        []byte(`{"key":"value"}`),
+			wantBody:    `{"key":"value"}`,
+			wantHeader:  MIMEApplicationJSON,
+		},
+		{
+			name:        "sends empty blob",
+			status:      http.StatusOK,
+			contentType: MIMETextPlain,
+			data:        []byte{},
+			wantBody:    "",
+			wantHeader:  MIMETextPlain,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			err := Blob(rec, tt.status, tt.contentType, tt.data)
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.status, rec.Code)
+			assert.Equal(t, tt.wantBody, rec.Body.String())
+			assert.Equal(t, tt.wantHeader, rec.Header().Get(HeaderContentType))
+		})
+	}
+}
+
+func TestStream(t *testing.T) {
+	tests := []struct {
+		name        string
+		status      int
+		contentType string
+		data        string
+		wantBody    string
+		wantHeader  string
+	}{
+		{
+			name:        "streams text data",
+			status:      http.StatusOK,
+			contentType: MIMETextPlainCharsetUTF8,
+			data:        "streamed content",
+			wantBody:    "streamed content",
+			wantHeader:  MIMETextPlainCharsetUTF8,
+		},
+		{
+			name:        "streams with 201 status",
+			status:      http.StatusCreated,
+			contentType: MIMEApplicationJSON,
+			data:        `{"streamed":true}`,
+			wantBody:    `{"streamed":true}`,
+			wantHeader:  MIMEApplicationJSON,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			err := Stream(rec, tt.status, tt.contentType, strings.NewReader(tt.data))
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.status, rec.Code)
+			assert.Equal(t, tt.wantBody, rec.Body.String())
+			assert.Equal(t, tt.wantHeader, rec.Header().Get(HeaderContentType))
+		})
+	}
+}
+
+func TestDelayedStatusWriter_WriteHeader(t *testing.T) {
+	t.Run("stores status code without committing", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		dsw := newDelayedStatusWriter(rec)
+
+		dsw.WriteHeader(http.StatusCreated)
+
+		assert.Equal(t, http.StatusCreated, dsw.status)
+		assert.False(t, dsw.commited)
+	})
+}
+
+func TestDelayedStatusWriter_Write(t *testing.T) {
+	tests := []struct {
+		name          string
+		initialStatus int
+		data          []byte
+		expectedCode  int
+	}{
+		{
+			name:          "write without prior status uses 200",
+			initialStatus: 0,
+			data:          []byte("test"),
+			expectedCode:  http.StatusOK,
+		},
+		{
+			name:          "write uses stored status",
+			initialStatus: http.StatusCreated,
+			data:          []byte("data"),
+			expectedCode:  http.StatusCreated,
+		},
+		{
+			name:          "empty write still commits",
+			initialStatus: http.StatusAccepted,
+			data:          []byte{},
+			expectedCode:  http.StatusAccepted,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			dsw := newDelayedStatusWriter(rec)
+
+			dsw.status = tt.initialStatus
+			_, _ = dsw.Write(tt.data)
+
+			assert.True(t, dsw.commited)
+			assert.Equal(t, tt.expectedCode, rec.Code)
+			assert.Equal(t, string(tt.data), rec.Body.String())
+		})
+	}
+}
+
+func TestDelayedStatusWriter_Write_Multiple(t *testing.T) {
+	t.Run("multiple writes commit once", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		dsw := newDelayedStatusWriter(rec)
+
+		_, _ = dsw.Write([]byte("first"))
+		_, _ = dsw.Write([]byte(" second"))
+
+		assert.True(t, dsw.commited)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "first second", rec.Body.String())
+	})
+}
+
+func TestDelayedStatusWriter_Unwrap(t *testing.T) {
+	t.Run("unwraps to original writer", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		dsw := newDelayedStatusWriter(rec)
+
+		unwrapped := dsw.Unwrap()
+
+		assert.Equal(t, rec, unwrapped)
+	})
+}
+
+func TestDelayedStatusWriter_Hijack(t *testing.T) {
+	t.Run("hijack with httptest not supported", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		dsw := newDelayedStatusWriter(rec)
+
+		conn, rw, err := dsw.Hijack()
+
+		assert.Error(t, err)
+		assert.Nil(t, conn)
+		assert.Nil(t, rw)
+	})
+}
+
+func TestDelayedStatusWriter_WithPreSetHeader(t *testing.T) {
+	t.Run("content type set before write", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		dsw := newDelayedStatusWriter(rec)
+
+		dsw.ResponseWriter.Header().Set(HeaderContentType, MIMEApplicationJSON)
+		_, _ = dsw.Write([]byte("{}"))
+
+		assert.True(t, dsw.commited)
+		assert.Equal(t, MIMEApplicationJSON, rec.Header().Get(HeaderContentType))
+		assert.Equal(t, "{}", rec.Body.String())
+	})
+}
+
+func TestDelayedStatusWriter_WriteHeaderThenWrite(t *testing.T) {
+	t.Run("write header then write data", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		dsw := newDelayedStatusWriter(rec)
+
+		dsw.WriteHeader(http.StatusCreated)
+		_, _ = dsw.Write([]byte("created"))
+
+		assert.True(t, dsw.commited)
+		assert.Equal(t, http.StatusCreated, rec.Code)
+		assert.Equal(t, "created", rec.Body.String())
 	})
 }
