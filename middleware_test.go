@@ -457,3 +457,397 @@ func TestMiddlewares_build_ExecutionOrder(t *testing.T) {
 	}
 	assert.Equal(t, expected, executionOrder)
 }
+
+func TestHTTPMiddlewares_build(t *testing.T) {
+	tests := []struct {
+		name        string
+		middlewares HTTPMiddlewares
+		setup       func() http.Handler
+		validate    func(t *testing.T, result http.Handler, middlewares HTTPMiddlewares)
+	}{
+		{
+			name:        "empty HTTPMiddlewares returns original handler",
+			middlewares: HTTPMiddlewares{},
+			setup: func() http.Handler {
+				calls := 0
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					calls++
+					w.WriteHeader(http.StatusOK)
+				})
+			},
+			validate: func(t *testing.T, result http.Handler, middlewares HTTPMiddlewares) {
+				require.NotNil(t, result)
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest(http.MethodGet, "/", nil)
+				result.ServeHTTP(w, r)
+				assert.Equal(t, http.StatusOK, w.Code)
+			},
+		},
+		{
+			name: "single middleware wraps handler",
+			middlewares: HTTPMiddlewares{
+				&HTTPMiddleware{
+					ID:       "middleware-1",
+					Priority: 0,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							w.Header().Set("X-Middleware", "1")
+							h.ServeHTTP(w, r)
+						})
+					},
+				},
+			},
+			setup: func() http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusOK)
+				})
+			},
+			validate: func(t *testing.T, result http.Handler, middlewares HTTPMiddlewares) {
+				require.NotNil(t, result)
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest(http.MethodGet, "/", nil)
+				result.ServeHTTP(w, r)
+				assert.Equal(t, "1", w.Header().Get("X-Middleware"))
+				assert.Equal(t, http.StatusOK, w.Code)
+			},
+		},
+		{
+			name: "multiple HTTPMiddlewares wrap in priority order",
+			middlewares: HTTPMiddlewares{
+				&HTTPMiddleware{
+					ID:       "middleware-1",
+					Priority: 1,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							w.Header().Add("X-Order", "1")
+							h.ServeHTTP(w, r)
+						})
+					},
+				},
+				&HTTPMiddleware{
+					ID:       "middleware-2",
+					Priority: 0,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							w.Header().Add("X-Order", "2")
+							h.ServeHTTP(w, r)
+						})
+					},
+				},
+				&HTTPMiddleware{
+					ID:       "middleware-3",
+					Priority: 2,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							w.Header().Add("X-Order", "3")
+							h.ServeHTTP(w, r)
+						})
+					},
+				},
+			},
+			setup: func() http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusOK)
+				})
+			},
+			validate: func(t *testing.T, result http.Handler, middlewares HTTPMiddlewares) {
+				require.NotNil(t, result)
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest(http.MethodGet, "/", nil)
+				result.ServeHTTP(w, r)
+
+				order := w.Header().Values("X-Order")
+				assert.Equal(t, []string{"2", "1", "3"}, order)
+			},
+		},
+		{
+			name: "empty ID generates UUID",
+			middlewares: HTTPMiddlewares{
+				&HTTPMiddleware{
+					ID:       "",
+					Priority: 0,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							h.ServeHTTP(w, r)
+						})
+					},
+				},
+			},
+			setup: func() http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusOK)
+				})
+			},
+			validate: func(t *testing.T, result http.Handler, middlewares HTTPMiddlewares) {
+				require.NotNil(t, result)
+				assert.NotEmpty(t, middlewares[0].ID)
+			},
+		},
+		{
+			name: "existing ID is preserved",
+			middlewares: HTTPMiddlewares{
+				&HTTPMiddleware{
+					ID:       "custom-id-123",
+					Priority: 0,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							h.ServeHTTP(w, r)
+						})
+					},
+				},
+			},
+			setup: func() http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusOK)
+				})
+			},
+			validate: func(t *testing.T, result http.Handler, middlewares HTTPMiddlewares) {
+				require.NotNil(t, result)
+				assert.Equal(t, "custom-id-123", middlewares[0].ID)
+			},
+		},
+		{
+			name: "HTTPMiddlewares with same priority maintain stable order",
+			middlewares: HTTPMiddlewares{
+				&HTTPMiddleware{
+					ID:       "first",
+					Priority: 0,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							w.Header().Add("X-Same-Priority", "first")
+							h.ServeHTTP(w, r)
+						})
+					},
+				},
+				&HTTPMiddleware{
+					ID:       "second",
+					Priority: 0,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							w.Header().Add("X-Same-Priority", "second")
+							h.ServeHTTP(w, r)
+						})
+					},
+				},
+				&HTTPMiddleware{
+					ID:       "third",
+					Priority: 0,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							w.Header().Add("X-Same-Priority", "third")
+							h.ServeHTTP(w, r)
+						})
+					},
+				},
+			},
+			setup: func() http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusOK)
+				})
+			},
+			validate: func(t *testing.T, result http.Handler, middlewares HTTPMiddlewares) {
+				require.NotNil(t, result)
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest(http.MethodGet, "/", nil)
+				result.ServeHTTP(w, r)
+
+				order := w.Header().Values("X-Same-Priority")
+				assert.Equal(t, []string{"first", "second", "third"}, order)
+			},
+		},
+		{
+			name: "negative priority HTTPMiddlewares execute first",
+			middlewares: HTTPMiddlewares{
+				&HTTPMiddleware{
+					ID:       "zero",
+					Priority: 0,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							w.Header().Add("X-Priority", "zero")
+							h.ServeHTTP(w, r)
+						})
+					},
+				},
+				&HTTPMiddleware{
+					ID:       "negative",
+					Priority: -1,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							w.Header().Add("X-Priority", "negative")
+							h.ServeHTTP(w, r)
+						})
+					},
+				},
+				&HTTPMiddleware{
+					ID:       "positive",
+					Priority: 1,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							w.Header().Add("X-Priority", "positive")
+							h.ServeHTTP(w, r)
+						})
+					},
+				},
+			},
+			setup: func() http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusOK)
+				})
+			},
+			validate: func(t *testing.T, result http.Handler, middlewares HTTPMiddlewares) {
+				require.NotNil(t, result)
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest(http.MethodGet, "/", nil)
+				result.ServeHTTP(w, r)
+
+				order := w.Header().Values("X-Priority")
+				assert.Equal(t, []string{"negative", "zero", "positive"}, order)
+			},
+		},
+		{
+			name: "middleware can short-circuit request",
+			middlewares: HTTPMiddlewares{
+				&HTTPMiddleware{
+					ID:       "short-circuit",
+					Priority: 0,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							w.WriteHeader(http.StatusForbidden)
+							_, _ = w.Write([]byte("Access denied"))
+						})
+					},
+				},
+			},
+			setup: func() http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write([]byte("Success"))
+				})
+			},
+			validate: func(t *testing.T, result http.Handler, middlewares HTTPMiddlewares) {
+				require.NotNil(t, result)
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest(http.MethodGet, "/", nil)
+				result.ServeHTTP(w, r)
+				assert.Equal(t, http.StatusForbidden, w.Code)
+				assert.Equal(t, "Access denied", w.Body.String())
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := tt.setup()
+			result := tt.middlewares.build(handler)
+			tt.validate(t, result, tt.middlewares)
+		})
+	}
+
+	t.Run("multiple HTTPMiddlewares with empty IDs generate unique UUIDs", func(t *testing.T) {
+		middlewares := HTTPMiddlewares{
+			&HTTPMiddleware{
+				ID:       "",
+				Priority: 0,
+				Func: func(h http.Handler) http.Handler {
+					return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						h.ServeHTTP(w, r)
+					})
+				},
+			},
+			&HTTPMiddleware{
+				ID:       "",
+				Priority: 1,
+				Func: func(h http.Handler) http.Handler {
+					return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						h.ServeHTTP(w, r)
+					})
+				},
+			},
+			&HTTPMiddleware{
+				ID:       "",
+				Priority: 2,
+				Func: func(h http.Handler) http.Handler {
+					return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						h.ServeHTTP(w, r)
+					})
+				},
+			},
+		}
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		result := middlewares.build(handler)
+		require.NotNil(t, result)
+
+		assert.NotEmpty(t, middlewares[0].ID)
+		assert.NotEmpty(t, middlewares[1].ID)
+		assert.NotEmpty(t, middlewares[2].ID)
+
+		assert.NotEqual(t, middlewares[0].ID, middlewares[1].ID)
+		assert.NotEqual(t, middlewares[1].ID, middlewares[2].ID)
+		assert.NotEqual(t, middlewares[0].ID, middlewares[2].ID)
+	})
+}
+
+func TestHTTPMiddlewares_build_ExecutionOrder(t *testing.T) {
+	var executionOrder []string
+
+	middlewares := HTTPMiddlewares{
+		&HTTPMiddleware{
+			ID:       "mw-1",
+			Priority: 10,
+			Func: func(h http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					executionOrder = append(executionOrder, "mw-1-before")
+					h.ServeHTTP(w, r)
+					executionOrder = append(executionOrder, "mw-1-after")
+				})
+			},
+		},
+		&HTTPMiddleware{
+			ID:       "mw-2",
+			Priority: 5,
+			Func: func(h http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					executionOrder = append(executionOrder, "mw-2-before")
+					h.ServeHTTP(w, r)
+					executionOrder = append(executionOrder, "mw-2-after")
+				})
+			},
+		},
+		&HTTPMiddleware{
+			ID:       "mw-3",
+			Priority: 0,
+			Func: func(h http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					executionOrder = append(executionOrder, "mw-3-before")
+					h.ServeHTTP(w, r)
+					executionOrder = append(executionOrder, "mw-3-after")
+				})
+			},
+		},
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		executionOrder = append(executionOrder, "handler")
+		w.WriteHeader(http.StatusOK)
+	})
+
+	result := middlewares.build(handler)
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	result.ServeHTTP(w, r)
+
+	expected := []string{
+		"mw-3-before",
+		"mw-2-before",
+		"mw-1-before",
+		"handler",
+		"mw-1-after",
+		"mw-2-after",
+		"mw-3-after",
+	}
+	assert.Equal(t, expected, executionOrder)
+}
