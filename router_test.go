@@ -1083,6 +1083,552 @@ func (m *mockErrorHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, err
 	w.WriteHeader(m.statusCode)
 }
 
+func TestRouter_WithIPExtractor(t *testing.T) {
+	tests := []struct {
+		name        string
+		ipExtractor IPExtractor
+		wantNil     bool
+	}{
+		{
+			name: "valid IP extractor is set",
+			ipExtractor: func(r *http.Request) string {
+				return "custom-ip"
+			},
+			wantNil: false,
+		},
+		{
+			name:        "nil IP extractor keeps default",
+			ipExtractor: nil,
+			wantNil:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := NewRouter(WithIPExtractor(tt.ipExtractor))
+
+			if tt.ipExtractor != nil {
+				assert.NotNil(t, router.ipExtractor)
+			}
+		})
+	}
+}
+
+func TestRouter_WithResponseInterceptor(t *testing.T) {
+	tests := []struct {
+		name        string
+		interceptor func(w http.ResponseWriter) (http.ResponseWriter, func())
+		wantNotNil  bool
+	}{
+		{
+			name: "valid response interceptor is added",
+			interceptor: func(w http.ResponseWriter) (http.ResponseWriter, func()) {
+				return w, func() {}
+			},
+			wantNotNil: true,
+		},
+		{
+			name:        "nil interceptor is ignored",
+			interceptor: nil,
+			wantNotNil:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := NewRouter()
+
+			routerWithInterceptor := NewRouter(WithResponseInterceptor(tt.interceptor))
+
+			if tt.interceptor != nil {
+				assert.Greater(t, len(routerWithInterceptor.rwInterceptors), len(router.rwInterceptors))
+			} else {
+				assert.Equal(t, len(routerWithInterceptor.rwInterceptors), len(router.rwInterceptors))
+			}
+		})
+	}
+}
+
+func TestRouter_WithRequestInterceptor(t *testing.T) {
+	tests := []struct {
+		name        string
+		interceptor func(r *http.Request) (*http.Request, func())
+		wantNotNil  bool
+	}{
+		{
+			name: "valid request interceptor is added",
+			interceptor: func(r *http.Request) (*http.Request, func()) {
+				return r, func() {}
+			},
+			wantNotNil: true,
+		},
+		{
+			name:        "nil interceptor is ignored",
+			interceptor: nil,
+			wantNotNil:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := NewRouter()
+
+			routerWithInterceptor := NewRouter(WithRequestInterceptor(tt.interceptor))
+
+			if tt.interceptor != nil {
+				assert.Greater(t, len(routerWithInterceptor.reqInterceptors), len(router.reqInterceptors))
+			} else {
+				assert.Equal(t, len(routerWithInterceptor.reqInterceptors), len(router.reqInterceptors))
+			}
+		})
+	}
+}
+
+func TestRouter_PreHTTPFunc(t *testing.T) {
+	tests := []struct {
+		name            string
+		middlewareFuncs []func(next http.Handler) http.Handler
+		expectedCount   int
+	}{
+		{
+			name: "adds single HTTP middleware function",
+			middlewareFuncs: []func(next http.Handler) http.Handler{
+				func(h http.Handler) http.Handler {
+					return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						w.Header().Set("X-Pre-HTTP-1", "executed")
+						h.ServeHTTP(w, r)
+					})
+				},
+			},
+			expectedCount: 1,
+		},
+		{
+			name: "adds multiple HTTP middleware functions",
+			middlewareFuncs: []func(next http.Handler) http.Handler{
+				func(h http.Handler) http.Handler {
+					return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						w.Header().Add("X-HTTP-Order", "1")
+						h.ServeHTTP(w, r)
+					})
+				},
+				func(h http.Handler) http.Handler {
+					return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						w.Header().Add("X-HTTP-Order", "2")
+						h.ServeHTTP(w, r)
+					})
+				},
+			},
+			expectedCount: 2,
+		},
+		{
+			name:            "empty middleware funcs list",
+			middlewareFuncs: []func(next http.Handler) http.Handler{},
+			expectedCount:   0,
+		},
+		{
+			name: "nil middleware funcs should not be added",
+			middlewareFuncs: []func(next http.Handler) http.Handler{
+				nil,
+				func(h http.Handler) http.Handler {
+					return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						h.ServeHTTP(w, r)
+					})
+				},
+			},
+			expectedCount: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := NewRouter()
+
+			router.PreHTTPFunc(tt.middlewareFuncs...)
+
+			assert.Len(t, router.HTTPMiddlewares, tt.expectedCount)
+		})
+	}
+}
+
+func TestRouter_PreHTTP(t *testing.T) {
+	tests := []struct {
+		name          string
+		middlewares   []*HTTPMiddleware
+		expectedCount int
+	}{
+		{
+			name: "adds single HTTP middleware",
+			middlewares: []*HTTPMiddleware{
+				{
+					ID:       "http-middleware-1",
+					Priority: 0,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							w.Header().Set("X-Pre-HTTP-1", "executed")
+							h.ServeHTTP(w, r)
+						})
+					},
+				},
+			},
+			expectedCount: 1,
+		},
+		{
+			name: "adds multiple HTTP Middlewares with different priorities",
+			middlewares: []*HTTPMiddleware{
+				{
+					ID:       "priority-10",
+					Priority: 10,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							w.Header().Set("X-HTTP-Priority-10", "executed")
+							h.ServeHTTP(w, r)
+						})
+					},
+				},
+				{
+					ID:       "priority-5",
+					Priority: 5,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							w.Header().Set("X-HTTP-Priority-5", "executed")
+							h.ServeHTTP(w, r)
+						})
+					},
+				},
+			},
+			expectedCount: 2,
+		},
+		{
+			name:          "empty HTTPMiddlewares list",
+			middlewares:   []*HTTPMiddleware{},
+			expectedCount: 0,
+		},
+		{
+			name: "HTTPMiddlewares with nil funcs",
+			middlewares: []*HTTPMiddleware{
+				{
+					ID:       "nil-func",
+					Priority: 0,
+					Func:     nil,
+				},
+			},
+			expectedCount: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := NewRouter()
+
+			router.PreHTTP(tt.middlewares...)
+
+			assert.Len(t, router.HTTPMiddlewares, tt.expectedCount)
+		})
+	}
+}
+
+func TestRouter_PreHTTPAndPreHTTPFunc_Combined(t *testing.T) {
+	router := NewRouter()
+
+	router.PreHTTPFunc(func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-PreHTTPFunc-1", "executed")
+			h.ServeHTTP(w, r)
+		})
+	})
+
+	router.PreHTTP(&HTTPMiddleware{
+		ID:       "named-http-middleware",
+		Priority: 5,
+		Func: func(h http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("X-PreHTTP-1", "executed")
+				h.ServeHTTP(w, r)
+			})
+		},
+	})
+
+	router.PreHTTPFunc(func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-PreHTTPFunc-2", "executed")
+			h.ServeHTTP(w, r)
+		})
+	})
+
+	assert.Len(t, router.HTTPMiddlewares, 3)
+}
+
+func TestRouter_HTTPMiddlewareExecution(t *testing.T) {
+	tests := []struct {
+		name            string
+		setupRouter     func(*Router)
+		requestPath     string
+		requestMethod   string
+		expectedStatus  int
+		expectedHeaders map[string][]string
+	}{
+		{
+			name: "HTTP middleware executes before handler",
+			setupRouter: func(r *Router) {
+				r.PreHTTPFunc(func(h http.Handler) http.Handler {
+					return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+						w.Header().Set("X-HTTP-Middleware", "executed")
+						h.ServeHTTP(w, req)
+					})
+				})
+
+				r.GET("/test", func(w http.ResponseWriter, req *http.Request) error {
+					w.WriteHeader(http.StatusOK)
+					return nil
+				})
+			},
+			requestPath:    "/test",
+			requestMethod:  http.MethodGet,
+			expectedStatus: http.StatusOK,
+			expectedHeaders: map[string][]string{
+				"X-HTTP-Middleware": {"executed"},
+			},
+		},
+		{
+			name: "multiple HTTP middlewares execute in order",
+			setupRouter: func(r *Router) {
+				r.PreHTTPFunc(func(h http.Handler) http.Handler {
+					return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+						w.Header().Add("X-HTTP-Order", "1")
+						h.ServeHTTP(w, req)
+					})
+				})
+
+				r.PreHTTP(&HTTPMiddleware{
+					ID:       "http-mw-2",
+					Priority: 5,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+							w.Header().Add("X-HTTP-Order", "2")
+							h.ServeHTTP(w, req)
+						})
+					},
+				})
+
+				r.GET("/test", func(w http.ResponseWriter, req *http.Request) error {
+					w.WriteHeader(http.StatusOK)
+					return nil
+				})
+			},
+			requestPath:    "/test",
+			requestMethod:  http.MethodGet,
+			expectedStatus: http.StatusOK,
+			expectedHeaders: map[string][]string{
+				"X-HTTP-Order": {"1", "2"},
+			},
+		},
+		{
+			name: "HTTP middleware can short-circuit",
+			setupRouter: func(r *Router) {
+				r.PreHTTP(&HTTPMiddleware{
+					ID:       "short-circuit",
+					Priority: 0,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+							w.WriteHeader(http.StatusForbidden)
+							_, _ = w.Write([]byte("Access denied"))
+						})
+					},
+				})
+
+				r.GET("/test", func(w http.ResponseWriter, req *http.Request) error {
+					w.WriteHeader(http.StatusOK)
+					return nil
+				})
+			},
+			requestPath:    "/test",
+			requestMethod:  http.MethodGet,
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name: "HTTP middleware handles handler errors",
+			setupRouter: func(r *Router) {
+				r.PreHTTP(&HTTPMiddleware{
+					ID:       "error-recovery",
+					Priority: 0,
+					Func: func(h http.Handler) http.Handler {
+						return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+							defer func() {
+								if rec := recover(); rec != nil {
+									w.WriteHeader(http.StatusInternalServerError)
+									_, _ = w.Write([]byte("Panic recovered"))
+								}
+							}()
+							h.ServeHTTP(w, req)
+						})
+					},
+				})
+
+				r.GET("/test", func(w http.ResponseWriter, req *http.Request) error {
+					return errors.New("handler error")
+				})
+			},
+			requestPath:    "/test",
+			requestMethod:  http.MethodGet,
+			expectedStatus: http.StatusInternalServerError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := NewRouter(WithErrorHandler(func(w http.ResponseWriter, r *http.Request, err error) {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(err.Error()))
+			}))
+			tt.setupRouter(router)
+
+			handler := router.Build()
+
+			req := httptest.NewRequest(tt.requestMethod, tt.requestPath, nil)
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.expectedStatus, w.Code)
+
+			for key, expectedValues := range tt.expectedHeaders {
+				assert.Equal(t, expectedValues, w.Header().Values(key))
+			}
+		})
+	}
+}
+
+func TestRouter_CustomIPExtractor(t *testing.T) {
+	tests := []struct {
+		name        string
+		ipExtractor IPExtractor
+		request     *http.Request
+		expectedIP  string
+	}{
+		{
+			name: "custom IP extractor returns custom value",
+			ipExtractor: func(r *http.Request) string {
+				return "custom-ip-123"
+			},
+			request:    httptest.NewRequest(http.MethodGet, "/test", nil),
+			expectedIP: "custom-ip-123",
+		},
+		{
+			name: "custom IP extractor extracts from header",
+			ipExtractor: func(r *http.Request) string {
+				return r.Header.Get("X-Forwarded-For")
+			},
+			request: func() *http.Request {
+				req := httptest.NewRequest(http.MethodGet, "/test", nil)
+				req.Header.Set("X-Forwarded-For", "10.0.0.1")
+				return req
+			}(),
+			expectedIP: "10.0.0.1",
+		},
+		{
+			name:        "default IP extractor uses RemoteIP",
+			ipExtractor: nil,
+			request:     httptest.NewRequest(http.MethodGet, "/test", nil),
+			expectedIP:  "192.0.2.1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var extractedIP string
+
+			router := NewRouter(WithIPExtractor(tt.ipExtractor))
+			router.GET("/test", func(w http.ResponseWriter, req *http.Request) error {
+				extractedIP = FromContext(req.Context()).RealIP()
+				w.WriteHeader(http.StatusOK)
+				return nil
+			})
+
+			handler := router.Build()
+
+			handler.ServeHTTP(httptest.NewRecorder(), tt.request)
+
+			assert.Equal(t, tt.expectedIP, extractedIP)
+		})
+	}
+}
+
+func TestRouter_ResponseInterceptor(t *testing.T) {
+	tests := []struct {
+		name        string
+		interceptor func(w http.ResponseWriter) (http.ResponseWriter, func())
+		expectValue string
+	}{
+		{
+			name: "response interceptor wraps response",
+			interceptor: func(w http.ResponseWriter) (http.ResponseWriter, func()) {
+				return &responseWrapper{ResponseWriter: w}, func() {}
+			},
+			expectValue: "intercepted",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := NewRouter(WithResponseInterceptor(tt.interceptor))
+			router.GET("/test", func(w http.ResponseWriter, req *http.Request) error {
+				w.WriteHeader(http.StatusOK)
+				return nil
+			})
+
+			handler := router.Build()
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+
+			handler.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusOK, w.Code)
+		})
+	}
+}
+
+func TestRouter_RequestInterceptor(t *testing.T) {
+	tests := []struct {
+		name        string
+		interceptor func(r *http.Request) (*http.Request, func())
+		expectValue string
+	}{
+		{
+			name: "request interceptor adds custom header",
+			interceptor: func(r *http.Request) (*http.Request, func()) {
+				r.Header.Set("X-Intercepted", "true")
+				return r, func() {}
+			},
+			expectValue: "true",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var headerValue string
+
+			router := NewRouter(WithRequestInterceptor(tt.interceptor))
+			router.GET("/test", func(w http.ResponseWriter, req *http.Request) error {
+				headerValue = req.Header.Get("X-Intercepted")
+				w.WriteHeader(http.StatusOK)
+				return nil
+			})
+
+			handler := router.Build()
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+
+			handler.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.expectValue, headerValue)
+		})
+	}
+}
+
+type responseWrapper struct {
+	http.ResponseWriter
+}
+
 func collectPatterns(seq iter.Seq[string]) []string {
 	var patterns []string
 	seq(func(pattern string) bool {
