@@ -11,24 +11,25 @@ import (
 var _ huma.Adapter = (*Adapter)(nil)
 
 type router interface {
-	Route(method string, path string, handler keratin.Handler) *keratin.Route
-	ServeHTTP(http.ResponseWriter, *http.Request)
+	RouteFunc(method string, path string, handler func(http.ResponseWriter, *http.Request) error) *keratin.Route
 }
 
 type Adapter struct {
-	router
-	pool *sync.Pool
+	http.Handler
+	router router
+	pool   *sync.Pool
 }
 
-func NewAdapter(router router) *Adapter {
+func NewAdapter(handler http.Handler, router router) *Adapter {
 	return &Adapter{
-		router: router,
-		pool:   &sync.Pool{New: func() any { return new(rContext) }},
+		Handler: handler,
+		router:  router,
+		pool:    &sync.Pool{New: func() any { return new(rContext) }},
 	}
 }
 
 func (a *Adapter) Handle(op *huma.Operation, handler func(huma.Context)) {
-	a.Route(op.Method, op.Path, keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+	a.router.RouteFunc(op.Method, op.Path, func(w http.ResponseWriter, r *http.Request) error {
 		ctx := a.pool.Get().(*rContext)
 		ctx.reset(op, r, w)
 
@@ -38,6 +39,7 @@ func (a *Adapter) Handle(op *huma.Operation, handler func(huma.Context)) {
 		}()
 
 		handler(ctx)
+
 		return nil
-	}))
+	})
 }
