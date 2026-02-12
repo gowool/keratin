@@ -3,6 +3,8 @@ package middleware
 import (
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -588,5 +590,546 @@ func TestRecover_LongPanicMessage(t *testing.T) {
 		unwrapped := httpErr.Unwrap()
 		require.NotNil(t, unwrapped)
 		assert.Contains(t, unwrapped.Error(), "a")
+	})
+}
+
+func TestHTTPRecover_PanicRecovery(t *testing.T) {
+	tests := []struct {
+		name       string
+		panicValue interface{}
+	}{
+		{
+			name:       "recovers from string panic",
+			panicValue: "test panic",
+		},
+		{
+			name:       "recovers from error panic",
+			panicValue: errors.New("test error"),
+		},
+		{
+			name:       "recovers from int panic",
+			panicValue: 42,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logBuffer strings.Builder
+			logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				panic(tt.panicValue)
+			})
+
+			middleware := HTTPRecover(RecoverConfig{}, logger)
+			wrapped := middleware(handler)
+
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			rec := httptest.NewRecorder()
+
+			wrapped.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusInternalServerError, rec.Code)
+			assert.Contains(t, rec.Body.String(), http.StatusText(http.StatusInternalServerError))
+			logContent := logBuffer.String()
+			assert.Contains(t, logContent, "panic recovered")
+			assert.Contains(t, logContent, "[PANIC RECOVER]")
+		})
+	}
+}
+
+func TestHTTPRecover_ErrAbortHandler(t *testing.T) {
+	t.Run("re-panics http.ErrAbortHandler", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			panic(http.ErrAbortHandler)
+		})
+
+		middleware := HTTPRecover(RecoverConfig{}, logger)
+		wrapped := middleware(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		assert.Panics(t, func() {
+			wrapped.ServeHTTP(rec, req)
+		})
+	})
+}
+
+func TestHTTPRecover_NormalExecution(t *testing.T) {
+	t.Run("passes through normal execution without panic", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("success"))
+		})
+
+		middleware := HTTPRecover(RecoverConfig{}, logger)
+		wrapped := middleware(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "success", rec.Body.String())
+	})
+}
+
+func TestHTTPRecover_NilLogger(t *testing.T) {
+	t.Run("uses discard handler when logger is nil", func(t *testing.T) {
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			panic("nil logger test")
+		})
+
+		middleware := HTTPRecover(RecoverConfig{}, nil)
+		wrapped := middleware(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		assert.NotPanics(t, func() {
+			wrapped.ServeHTTP(rec, req)
+		})
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	})
+}
+
+func TestHTTPRecover_CustomStackSize(t *testing.T) {
+	t.Run("uses custom StackSize", func(t *testing.T) {
+		var logBuffer strings.Builder
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			panic("custom stack size test")
+		})
+
+		middleware := HTTPRecover(RecoverConfig{StackSize: 512}, logger)
+		wrapped := middleware(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		logContent := logBuffer.String()
+		assert.Contains(t, logContent, "[PANIC RECOVER]")
+	})
+}
+
+func TestHTTPRecover_CommittedResponse(t *testing.T) {
+	t.Run("logs panic even when response already written", func(t *testing.T) {
+		var logBuffer strings.Builder
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("already written"))
+			panic("after commit")
+		})
+
+		middleware := HTTPRecover(RecoverConfig{}, logger)
+		wrapped := middleware(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		logContent := logBuffer.String()
+		assert.Contains(t, logContent, "panic recovered")
+	})
+}
+
+func TestHTTPRecover_LogGroup(t *testing.T) {
+	t.Run("adds http_recover group to logger", func(t *testing.T) {
+		var logBuffer strings.Builder
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			panic("log group test")
+		})
+
+		middleware := HTTPRecover(RecoverConfig{}, logger)
+		wrapped := middleware(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		logContent := logBuffer.String()
+		assert.Contains(t, logContent, "panic recovered")
+	})
+}
+
+func TestHTTPRecover_StackTrace(t *testing.T) {
+	t.Run("captures stack trace in log", func(t *testing.T) {
+		var logBuffer strings.Builder
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			panic("stack trace test")
+		})
+
+		middleware := HTTPRecover(RecoverConfig{}, logger)
+		wrapped := middleware(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		logContent := logBuffer.String()
+		assert.Contains(t, logContent, "[PANIC RECOVER]")
+		assert.Contains(t, logContent, "stack trace test")
+	})
+}
+
+func TestHTTPRecover_ErrorWrapping(t *testing.T) {
+	t.Run("wraps error correctly", func(t *testing.T) {
+		originalErr := errors.New("database connection failed")
+		var logBuffer strings.Builder
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			panic(originalErr)
+		})
+
+		middleware := HTTPRecover(RecoverConfig{}, logger)
+		wrapped := middleware(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		logContent := logBuffer.String()
+		assert.Contains(t, logContent, "[PANIC RECOVER]")
+		assert.Contains(t, logContent, "database connection failed")
+	})
+}
+
+func TestHTTPRecover_MiddlewareChaining(t *testing.T) {
+	t.Run("works in middleware chain", func(t *testing.T) {
+		called := false
+		var logBuffer strings.Builder
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			panic("chained panic")
+		})
+
+		recoverMiddleware := HTTPRecover(RecoverConfig{}, logger)
+		loggingMiddleware := func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("X-Logged", "true")
+				next.ServeHTTP(w, r)
+			})
+		}
+
+		wrapped := loggingMiddleware(recoverMiddleware(handler))
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.True(t, called)
+		assert.Equal(t, "true", rec.Header().Get("X-Logged"))
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	})
+}
+
+func TestHTTPRecover_RealWorldScenarios(t *testing.T) {
+	t.Run("handles nil pointer dereference", func(t *testing.T) {
+		var logBuffer strings.Builder
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var ptr *int
+			_ = *ptr
+		})
+
+		middleware := HTTPRecover(RecoverConfig{}, logger)
+		wrapped := middleware(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	})
+
+	t.Run("handles slice index out of bounds", func(t *testing.T) {
+		var logBuffer strings.Builder
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			slice := []int{1, 2, 3}
+			_ = slice[10]
+		})
+
+		middleware := HTTPRecover(RecoverConfig{}, logger)
+		wrapped := middleware(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	})
+
+	t.Run("handles type assertion failure", func(t *testing.T) {
+		var logBuffer strings.Builder
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var i interface{} = "string"
+			_ = i.(int)
+		})
+
+		middleware := HTTPRecover(RecoverConfig{}, logger)
+		wrapped := middleware(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	})
+}
+
+func TestHTTPRecover_EdgeCases(t *testing.T) {
+	t.Run("handles empty string panic", func(t *testing.T) {
+		var logBuffer strings.Builder
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			panic("")
+		})
+
+		middleware := HTTPRecover(RecoverConfig{}, logger)
+		wrapped := middleware(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	})
+
+	t.Run("handles struct panic", func(t *testing.T) {
+		type customPanic struct {
+			Code    int
+			Message string
+		}
+
+		var logBuffer strings.Builder
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			panic(customPanic{Code: 500, Message: "custom error"})
+		})
+
+		middleware := HTTPRecover(RecoverConfig{}, logger)
+		wrapped := middleware(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		logContent := logBuffer.String()
+		assert.Contains(t, logContent, "custom error")
+	})
+}
+
+func TestHTTPRecover_VariousMethods(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+	}{
+		{"GET request", http.MethodGet},
+		{"POST request", http.MethodPost},
+		{"PUT request", http.MethodPut},
+		{"DELETE request", http.MethodDelete},
+		{"PATCH request", http.MethodPatch},
+		{"HEAD request", http.MethodHead},
+		{"OPTIONS request", http.MethodOptions},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logBuffer strings.Builder
+			logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				panic("method test")
+			})
+
+			middleware := HTTPRecover(RecoverConfig{}, logger)
+			wrapped := middleware(handler)
+
+			req := httptest.NewRequest(tt.method, "/", nil)
+			rec := httptest.NewRecorder()
+
+			wrapped.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		})
+	}
+}
+
+func TestHTTPRecover_PanicInNestedCalls(t *testing.T) {
+	t.Run("recovers panic in deeply nested function calls", func(t *testing.T) {
+		nestedFunc := func() {
+			panic("nested panic")
+		}
+
+		middleFunc := func() {
+			nestedFunc()
+		}
+
+		var logBuffer strings.Builder
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			middleFunc()
+		})
+
+		middleware := HTTPRecover(RecoverConfig{}, logger)
+		wrapped := middleware(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	})
+}
+
+func TestHTTPRecover_ConcurrentPanics(t *testing.T) {
+	t.Run("handles concurrent requests with panics", func(t *testing.T) {
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			panic("concurrent panic")
+		})
+
+		middleware := HTTPRecover(RecoverConfig{}, nil)
+		wrapped := middleware(handler)
+
+		errChan := make(chan int, 10)
+
+		for i := 0; i < 10; i++ {
+			go func() {
+				req := httptest.NewRequest(http.MethodGet, "/", nil)
+				rec := httptest.NewRecorder()
+				wrapped.ServeHTTP(rec, req)
+				errChan <- rec.Code
+			}()
+		}
+
+		for i := 0; i < 10; i++ {
+			code := <-errChan
+			assert.Equal(t, http.StatusInternalServerError, code)
+		}
+	})
+}
+
+func TestHTTPRecover_PanicAfterResponseWrite(t *testing.T) {
+	t.Run("recovers panic after response write", func(t *testing.T) {
+		var logBuffer strings.Builder
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("partial response"))
+			panic("panic after write")
+		})
+
+		middleware := HTTPRecover(RecoverConfig{}, logger)
+		wrapped := middleware(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		logContent := logBuffer.String()
+		assert.Contains(t, logContent, "panic recovered")
+	})
+}
+
+func TestHTTPRecover_LongPanicMessage(t *testing.T) {
+	t.Run("handles long panic messages", func(t *testing.T) {
+		longMsg := strings.Repeat("a", 10000)
+		var logBuffer strings.Builder
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			panic(longMsg)
+		})
+
+		middleware := HTTPRecover(RecoverConfig{}, logger)
+		wrapped := middleware(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		logContent := logBuffer.String()
+		assert.Contains(t, logContent, "a")
+	})
+}
+
+type mockCommittedWriter struct {
+	http.ResponseWriter
+	committed bool
+}
+
+func (m *mockCommittedWriter) Committed() bool {
+	return m.committed
+}
+
+func TestHTTPRecover_ResponseCommitter(t *testing.T) {
+	t.Run("skips error writing when ResponseCommitter is committed", func(t *testing.T) {
+		var logBuffer strings.Builder
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		rec := httptest.NewRecorder()
+
+		committer := &mockCommittedWriter{
+			ResponseWriter: rec,
+			committed:      true,
+		}
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			panic("committed panic")
+		})
+
+		middleware := HTTPRecover(RecoverConfig{}, logger)
+		wrapped := middleware(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+
+		wrapped.ServeHTTP(committer, req)
+
+		assert.Empty(t, rec.Body.String())
+		logContent := logBuffer.String()
+		assert.Contains(t, logContent, "panic recovered")
 	})
 }
