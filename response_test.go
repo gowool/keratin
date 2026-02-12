@@ -1582,7 +1582,7 @@ func TestDelayedStatusWriter_WriteHeader(t *testing.T) {
 		dsw.WriteHeader(http.StatusCreated)
 
 		assert.Equal(t, http.StatusCreated, dsw.status)
-		assert.False(t, dsw.commited)
+		assert.False(t, dsw.committed)
 	})
 }
 
@@ -1621,7 +1621,7 @@ func TestDelayedStatusWriter_Write(t *testing.T) {
 			dsw.status = tt.initialStatus
 			_, _ = dsw.Write(tt.data)
 
-			assert.True(t, dsw.commited)
+			assert.True(t, dsw.committed)
 			assert.Equal(t, tt.expectedCode, rec.Code)
 			assert.Equal(t, string(tt.data), rec.Body.String())
 		})
@@ -1636,7 +1636,7 @@ func TestDelayedStatusWriter_Write_Multiple(t *testing.T) {
 		_, _ = dsw.Write([]byte("first"))
 		_, _ = dsw.Write([]byte(" second"))
 
-		assert.True(t, dsw.commited)
+		assert.True(t, dsw.committed)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Equal(t, "first second", rec.Body.String())
 	})
@@ -1674,7 +1674,7 @@ func TestDelayedStatusWriter_WithPreSetHeader(t *testing.T) {
 		dsw.ResponseWriter.Header().Set(HeaderContentType, MIMEApplicationJSON)
 		_, _ = dsw.Write([]byte("{}"))
 
-		assert.True(t, dsw.commited)
+		assert.True(t, dsw.committed)
 		assert.Equal(t, MIMEApplicationJSON, rec.Header().Get(HeaderContentType))
 		assert.Equal(t, "{}", rec.Body.String())
 	})
@@ -1688,7 +1688,7 @@ func TestDelayedStatusWriter_WriteHeaderThenWrite(t *testing.T) {
 		dsw.WriteHeader(http.StatusCreated)
 		_, _ = dsw.Write([]byte("created"))
 
-		assert.True(t, dsw.commited)
+		assert.True(t, dsw.committed)
 		assert.Equal(t, http.StatusCreated, rec.Code)
 		assert.Equal(t, "created", rec.Body.String())
 	})
