@@ -1,12 +1,13 @@
 package session
 
 import (
-	"context"
+	"bytes"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/gowool/keratin"
 	"github.com/gowool/keratin/middleware"
@@ -15,473 +16,687 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMiddleware(t *testing.T) {
-	type testCase struct {
-		name         string
-		registry     *Registry
-		logger       *slog.Logger
-		skippers     []middleware.Skipper
-		handlerSetup func(t *testing.T, registry *Registry) keratin.Handler
-		requestSetup func(t *testing.T) *http.Request
-		validate     func(t *testing.T, w *httptest.ResponseRecorder, err error, cookies []*http.Cookie)
-		wantErr      bool
-	}
-
-	tests := []testCase{
-		{
-			name:     "empty registry passes through to next handler",
-			registry: NewRegistry(),
-			logger:   slog.New(slog.DiscardHandler),
-			handlerSetup: func(t *testing.T, registry *Registry) keratin.Handler {
-				return keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-					w.WriteHeader(http.StatusOK)
-					_, _ = w.Write([]byte("success"))
-					return nil
-				})
-			},
-			requestSetup: func(t *testing.T) *http.Request {
-				return httptest.NewRequest(http.MethodGet, "/", nil)
-			},
-			validate: func(t *testing.T, w *httptest.ResponseRecorder, err error, cookies []*http.Cookie) {
-				require.NoError(t, err)
-				assert.Equal(t, http.StatusOK, w.Code)
-				assert.Equal(t, "success", w.Body.String())
-				assert.Len(t, cookies, 0)
-			},
-		},
-		{
-			name: "skipper returns true passes through to next handler",
-			registry: NewRegistry(New(Config{
-				Cookie: Cookie{Name: "session"},
-			}, &MockStore{})),
-			logger: slog.New(slog.DiscardHandler),
-			skippers: []middleware.Skipper{
-				func(r *http.Request) bool {
-					return r.URL.Path == "/skip"
-				},
-			},
-			handlerSetup: func(t *testing.T, registry *Registry) keratin.Handler {
-				return keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-					w.WriteHeader(http.StatusOK)
-					_, _ = w.Write([]byte("skipped"))
-					return nil
-				})
-			},
-			requestSetup: func(t *testing.T) *http.Request {
-				return httptest.NewRequest(http.MethodGet, "/skip", nil)
-			},
-			validate: func(t *testing.T, w *httptest.ResponseRecorder, err error, cookies []*http.Cookie) {
-				require.NoError(t, err)
-				assert.Equal(t, http.StatusOK, w.Code)
-				assert.Equal(t, "skipped", w.Body.String())
-				assert.Len(t, cookies, 0)
-			},
-		},
-		{
-			name: "nil logger uses discard handler",
-			registry: NewRegistry(New(Config{
-				Cookie: Cookie{Name: "session"},
-			}, &MockStore{})),
-			logger: nil,
-			handlerSetup: func(t *testing.T, registry *Registry) keratin.Handler {
-				return keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-					w.WriteHeader(http.StatusOK)
-					return nil
-				})
-			},
-			requestSetup: func(t *testing.T) *http.Request {
-				return httptest.NewRequest(http.MethodGet, "/", nil)
-			},
-			validate: func(t *testing.T, w *httptest.ResponseRecorder, err error, cookies []*http.Cookie) {
-				require.NoError(t, err)
-				assert.Equal(t, http.StatusOK, w.Code)
-			},
-		},
-		{
-			name: "session reads successfully and writes when modified",
-			registry: func() *Registry {
-				store := &MockStore{}
-				store.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-				return NewRegistry(New(Config{
-					Cookie: Cookie{Name: "session"},
-				}, store))
-			}(),
-			logger: slog.New(slog.DiscardHandler),
-			handlerSetup: func(t *testing.T, registry *Registry) keratin.Handler {
-				return keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-					session := registry.Get("session")
-					session.Put(r.Context(), "key", "value")
-					w.WriteHeader(http.StatusOK)
-					_, _ = w.Write([]byte("success"))
-					return nil
-				})
-			},
-			requestSetup: func(t *testing.T) *http.Request {
-				return httptest.NewRequest(http.MethodGet, "/", nil)
-			},
-			validate: func(t *testing.T, w *httptest.ResponseRecorder, err error, cookies []*http.Cookie) {
-				require.NoError(t, err)
-				assert.Equal(t, http.StatusOK, w.Code)
-				assert.Len(t, cookies, 1)
-				assert.Equal(t, "session", cookies[0].Name)
-			},
-		},
-		{
-			name: "destroyed session writes empty cookie",
-			registry: func() *Registry {
-				store := &MockStore{}
-				store.On("Delete", mock.Anything, mock.Anything).Return(nil)
-				return NewRegistry(New(Config{
-					Cookie: Cookie{Name: "session"},
-				}, store))
-			}(),
-			logger: slog.New(slog.DiscardHandler),
-			handlerSetup: func(t *testing.T, registry *Registry) keratin.Handler {
-				return keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-					session := registry.Get("session")
-					_ = session.Destroy(r.Context())
-					w.WriteHeader(http.StatusOK)
-					return nil
-				})
-			},
-			requestSetup: func(t *testing.T) *http.Request {
-				return httptest.NewRequest(http.MethodGet, "/", nil)
-			},
-			validate: func(t *testing.T, w *httptest.ResponseRecorder, err error, cookies []*http.Cookie) {
-				require.NoError(t, err)
-				assert.Equal(t, http.StatusOK, w.Code)
-				assert.Len(t, cookies, 1)
-				assert.Equal(t, "session", cookies[0].Name)
-				assert.Equal(t, "", cookies[0].Value)
-				assert.Equal(t, -1, cookies[0].MaxAge)
-			},
-		},
-		{
-			name: "unmodified session does not write cookie",
-			registry: func() *Registry {
-				store := &MockStore{}
-				codec := NewGobCodec()
-				deadline := time.Now().Add(1 * time.Hour).UTC()
-				values := map[string]any{}
-				data, _ := codec.Encode(deadline, values)
-				store.On("Find", mock.Anything, "existing-token").Return(data, true, nil)
-				return NewRegistry(New(Config{
-					Cookie:   Cookie{Name: "session"},
-					Lifetime: 1 * time.Hour,
-				}, store))
-			}(),
-			logger: slog.New(slog.DiscardHandler),
-			handlerSetup: func(t *testing.T, registry *Registry) keratin.Handler {
-				return keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-					w.WriteHeader(http.StatusOK)
-					return nil
-				})
-			},
-			requestSetup: func(t *testing.T) *http.Request {
-				req := httptest.NewRequest(http.MethodGet, "/", nil)
-				req.AddCookie(&http.Cookie{
-					Name:  "session",
-					Value: "existing-token",
-				})
-				return req
-			},
-			validate: func(t *testing.T, w *httptest.ResponseRecorder, err error, cookies []*http.Cookie) {
-				require.NoError(t, err)
-				assert.Equal(t, http.StatusOK, w.Code)
-				assert.Len(t, cookies, 0)
-			},
-		},
-		{
-			name: "multiple sessions in registry all process",
-			registry: func() *Registry {
-				store1 := &MockStore{}
-				store1.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-				store2 := &MockStore{}
-				store2.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-				store3 := &MockStore{}
-				store3.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-				return NewRegistry(
-					New(Config{
-						Cookie: Cookie{Name: "session1"},
-					}, store1),
-					New(Config{
-						Cookie: Cookie{Name: "session2"},
-					}, store2),
-					New(Config{
-						Cookie: Cookie{Name: "session3"},
-					}, store3),
-				)
-			}(),
-			logger: slog.New(slog.DiscardHandler),
-			handlerSetup: func(t *testing.T, registry *Registry) keratin.Handler {
-				return keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-					session1 := registry.Get("session1")
-					session1.Put(r.Context(), "key", "value1")
-					session2 := registry.Get("session2")
-					session2.Put(r.Context(), "key", "value2")
-					session3 := registry.Get("session3")
-					session3.Put(r.Context(), "key", "value3")
-					w.WriteHeader(http.StatusOK)
-					return nil
-				})
-			},
-			requestSetup: func(t *testing.T) *http.Request {
-				return httptest.NewRequest(http.MethodGet, "/", nil)
-			},
-			validate: func(t *testing.T, w *httptest.ResponseRecorder, err error, cookies []*http.Cookie) {
-				require.NoError(t, err)
-				assert.Equal(t, http.StatusOK, w.Code)
-				assert.Len(t, cookies, 3)
-				cookieNames := make(map[string]bool)
-				for _, cookie := range cookies {
-					cookieNames[cookie.Name] = true
-				}
-				assert.True(t, cookieNames["session1"])
-				assert.True(t, cookieNames["session2"])
-				assert.True(t, cookieNames["session3"])
-			},
-		},
-		{
-			name: "commit error is logged but response continues",
-			registry: NewRegistry(New(Config{
-				Cookie: Cookie{Name: "session"},
-			}, &MockStore{})),
-			logger: slog.New(slog.DiscardHandler),
-			handlerSetup: func(t *testing.T, registry *Registry) keratin.Handler {
-				return keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-					w.WriteHeader(http.StatusOK)
-					_, _ = w.Write([]byte("success"))
-					return nil
-				})
-			},
-			requestSetup: func(t *testing.T) *http.Request {
-				return httptest.NewRequest(http.MethodGet, "/", nil)
-			},
-			validate: func(t *testing.T, w *httptest.ResponseRecorder, err error, cookies []*http.Cookie) {
-				require.NoError(t, err)
-				assert.Equal(t, http.StatusOK, w.Code)
-				assert.Equal(t, "success", w.Body.String())
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			handler := tt.handlerSetup(t, tt.registry)
-			mw := Middleware(tt.registry, tt.logger, tt.skippers...)
-			wrapped := mw(handler)
-
-			req := tt.requestSetup(t)
-			w := httptest.NewRecorder()
-			err := wrapped.ServeHTTP(w, req)
-
-			cookies := w.Result().Cookies()
-			tt.validate(t, w, err, cookies)
-
-			if tt.wantErr {
-				require.Error(t, err)
-			}
-		})
-	}
-}
-
-func TestSessionWriter(t *testing.T) {
-	t.Run("reset sets new response writer and clears before functions", func(t *testing.T) {
-		sw := &sessionWriter{}
-		sw.ResponseWriter = httptest.NewRecorder()
-		sw.before = []func(){
-			func() {},
-			func() {},
-		}
-
-		newW := httptest.NewRecorder()
-		sw.reset(newW)
-
-		assert.Equal(t, newW, sw.ResponseWriter)
-		assert.Nil(t, sw.before)
+func TestHTTPMiddleware(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
 	})
 
-	t.Run("WriteHeader executes all before functions", func(t *testing.T) {
-		calls := []string{}
-		sw := &sessionWriter{
-			ResponseWriter: httptest.NewRecorder(),
-			before: []func(){
-				func() { calls = append(calls, "before1") },
-				func() { calls = append(calls, "before2") },
-				func() { calls = append(calls, "before3") },
-			},
-		}
+	t.Run("skips when registry is empty", func(t *testing.T) {
+		registry := NewRegistry()
 
-		sw.WriteHeader(http.StatusOK)
-
-		assert.Equal(t, []string{"before1", "before2", "before3"}, calls)
-		assert.Equal(t, http.StatusOK, sw.ResponseWriter.(*httptest.ResponseRecorder).Code)
-	})
-
-	t.Run("WriteHeader with empty before functions", func(t *testing.T) {
-		sw := &sessionWriter{
-			ResponseWriter: httptest.NewRecorder(),
-			before:         nil,
-		}
-
-		sw.WriteHeader(http.StatusOK)
-
-		assert.Equal(t, http.StatusOK, sw.ResponseWriter.(*httptest.ResponseRecorder).Code)
-	})
-
-	t.Run("Unwrap returns underlying response writer", func(t *testing.T) {
-		underlying := httptest.NewRecorder()
-		sw := &sessionWriter{
-			ResponseWriter: underlying,
-		}
-
-		unwrapped := sw.Unwrap()
-
-		assert.Same(t, underlying, unwrapped)
-	})
-}
-
-func TestMiddleware_WriteBeforeWriteHeader(t *testing.T) {
-	t.Run("Write before WriteHeader triggers before functions", func(t *testing.T) {
-		var called bool
-		store := &MockStore{}
-		store.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-		registry := NewRegistry(New(Config{
-			Cookie: Cookie{Name: "test"},
-		}, store))
-
-		handler := keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-			session := registry.Get("test")
-			session.Put(r.Context(), "key", "value")
-			w.WriteHeader(http.StatusOK)
-			return nil
-		})
-
-		mw := Middleware(registry, slog.New(slog.DiscardHandler))
+		mw := HTTPMiddleware(registry, nil)
 		wrapped := mw(handler)
 
-		w := &customResponseWriter{
-			ResponseWriter:    httptest.NewRecorder(),
-			beforeWriteHeader: func() { called = true },
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "OK", rec.Body.String())
+	})
+
+	t.Run("skips when skipper returns true", func(t *testing.T) {
+		session := createTestSession("test")
+		registry := NewRegistry(session)
+
+		skipper := func(r *http.Request) bool {
+			return r.URL.Path == "/skip"
 		}
 
+		mw := HTTPMiddleware(registry, nil, skipper)
+		wrapped := mw(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/skip", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "OK", rec.Body.String())
+	})
+
+	t.Run("skips when chain skipper returns true", func(t *testing.T) {
+		session := createTestSession("test")
+		registry := NewRegistry(session)
+
+		skipper1 := func(r *http.Request) bool { return false }
+		skipper2 := func(r *http.Request) bool { return r.URL.Path == "/skip" }
+
+		mw := HTTPMiddleware(registry, nil, skipper1, skipper2)
+		wrapped := mw(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/skip", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "OK", rec.Body.String())
+	})
+
+	t.Run("uses nil logger when provided", func(t *testing.T) {
+		session := createTestSession("test")
+		registry := NewRegistry(session)
+
+		mw := HTTPMiddleware(registry, nil)
+		wrapped := mw(handler)
+
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		err := wrapped.ServeHTTP(w, req)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "OK", rec.Body.String())
+	})
+
+	t.Run("logs error when ReadSessions fails", func(t *testing.T) {
+		var logBuffer bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		mockStore := &MockStore{}
+		mockStore.On("Find", mock.Anything, mock.Anything).Return([]byte(nil), false, errors.New("read error"))
+
+		session := createTestSessionWithStore("test", mockStore)
+		registry := NewRegistry(session)
+
+		mw := HTTPMiddleware(registry, logger)
+		wrapped := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.AddCookie(&http.Cookie{Name: "test", Value: "some-token"})
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		assert.Contains(t, logBuffer.String(), "failed to read sessions")
+		mockStore.AssertExpectations(t)
+	})
+
+	t.Run("creates sessionWriter and resets it", func(t *testing.T) {
+		session := createTestSession("test")
+		registry := NewRegistry(session)
+
+		var called bool
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, ok := w.(*sessionWriter)
+			called = ok
+			w.WriteHeader(http.StatusOK)
+		})
+
+		mw := HTTPMiddleware(registry, nil)
+		wrapped := mw(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.True(t, called)
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("pools sessionWriter for reuse", func(t *testing.T) {
+		session := createTestSession("test")
+		registry := NewRegistry(session)
+
+		var poolCalls int32
+
+		mw := HTTPMiddleware(registry, nil)
+		wrapped := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			atomic.AddInt32(&poolCalls, 1)
+			w.WriteHeader(http.StatusOK)
+		}))
+
+		for i := 0; i < 5; i++ {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			rec := httptest.NewRecorder()
+			wrapped.ServeHTTP(rec, req)
+		}
+
+		assert.Equal(t, int32(5), atomic.LoadInt32(&poolCalls))
+	})
+
+	t.Run("logs error when WriteSessions fails", func(t *testing.T) {
+		var logBuffer bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		mockStore := &MockStore{}
+		mockCodec := &MockCodec{}
+		mockCodec.On("Encode", mock.Anything, mock.Anything).Return([]byte("encoded"), nil)
+		mockStore.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("write error"))
+
+		session := NewWithCodec(Config{Cookie: Cookie{Name: "test"}}, mockStore, mockCodec)
+		registry := NewRegistry(session)
+
+		handlerCalled := false
+
+		mw := HTTPMiddleware(registry, logger)
+		wrapped := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handlerCalled = true
+			ctx := r.Context()
+			s := registry.Get("test")
+			s.Put(ctx, "key", "value")
+			w.WriteHeader(http.StatusOK)
+		}))
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.True(t, handlerCalled)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Contains(t, logBuffer.String(), "failed to write sessions")
+		mockStore.AssertExpectations(t)
+		mockCodec.AssertExpectations(t)
+	})
+}
+
+func TestMiddleware(t *testing.T) {
+	handler := keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+		return nil
+	})
+
+	t.Run("skips when registry is empty", func(t *testing.T) {
+		registry := NewRegistry()
+
+		mw := Middleware(registry, nil)
+		wrapped := mw(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		err := wrapped.ServeHTTP(rec, req)
+
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "OK", rec.Body.String())
+	})
+
+	t.Run("skips when skipper returns true", func(t *testing.T) {
+		session := createTestSession("test")
+		registry := NewRegistry(session)
+
+		skipper := func(r *http.Request) bool {
+			return r.URL.Path == "/skip"
+		}
+
+		mw := Middleware(registry, nil, skipper)
+		wrapped := mw(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/skip", nil)
+		rec := httptest.NewRecorder()
+
+		err := wrapped.ServeHTTP(rec, req)
+
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "OK", rec.Body.String())
+	})
+
+	t.Run("returns error when ReadSessions fails", func(t *testing.T) {
+		mockStore := &MockStore{}
+		mockStore.On("Find", mock.Anything, mock.Anything).Return([]byte(nil), false, errors.New("read error"))
+
+		session := createTestSessionWithStore("test", mockStore)
+		registry := NewRegistry(session)
+
+		mw := Middleware(registry, nil)
+		wrapped := mw(keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+			return nil
+		}))
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.AddCookie(&http.Cookie{Name: "test", Value: "some-token"})
+		rec := httptest.NewRecorder()
+
+		err := wrapped.ServeHTTP(rec, req)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to read sessions")
+		mockStore.AssertExpectations(t)
+	})
+
+	t.Run("creates sessionWriter and calls handler", func(t *testing.T) {
+		session := createTestSession("test")
+		registry := NewRegistry(session)
+
+		var called bool
+
+		mw := Middleware(registry, nil)
+		wrapped := mw(keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+			_, ok := w.(*sessionWriter)
+			called = ok
+			return nil
+		}))
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		err := wrapped.ServeHTTP(rec, req)
 
 		require.NoError(t, err)
 		assert.True(t, called)
 	})
-}
 
-func TestMiddleware_Logging(t *testing.T) {
-	t.Run("commit error is logged", func(t *testing.T) {
-		var logMessages []string
-		logHandler := &testLogHandler{
-			logFunc: func(r slog.Record) {
-				logMessages = append(logMessages, r.Message)
-			},
-		}
-		logger := slog.New(logHandler)
-
-		store := &MockStore{}
-		store.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(assert.AnError)
-		session := New(Config{
-			Cookie: Cookie{Name: "test"},
-		}, store)
-
+	t.Run("uses pool for sessionWriter reuse", func(t *testing.T) {
+		session := createTestSession("test")
 		registry := NewRegistry(session)
-		handler := keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-			session := registry.Get("test")
-			session.Put(r.Context(), "key", "value")
-			w.WriteHeader(http.StatusOK)
+
+		var poolCalls int32
+
+		mw := Middleware(registry, nil)
+		wrapped := mw(keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+			atomic.AddInt32(&poolCalls, 1)
 			return nil
-		})
+		}))
+
+		for i := 0; i < 5; i++ {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			rec := httptest.NewRecorder()
+			err := wrapped.ServeHTTP(rec, req)
+			require.NoError(t, err)
+		}
+
+		assert.Equal(t, int32(5), atomic.LoadInt32(&poolCalls))
+	})
+
+	t.Run("logs error when WriteSessions fails", func(t *testing.T) {
+		var logBuffer bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		mockStore := &MockStore{}
+		mockCodec := &MockCodec{}
+		mockCodec.On("Encode", mock.Anything, mock.Anything).Return([]byte("encoded"), nil)
+		mockStore.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("write error"))
+
+		session := NewWithCodec(Config{Cookie: Cookie{Name: "test"}}, mockStore, mockCodec)
+		registry := NewRegistry(session)
+
+		handlerCalled := false
 
 		mw := Middleware(registry, logger)
-		wrapped := mw(handler)
+		wrapped := mw(keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+			handlerCalled = true
+			ctx := r.Context()
+			s := registry.Get("test")
+			s.Put(ctx, "key", "value")
+			w.WriteHeader(http.StatusOK)
+			return nil
+		}))
 
-		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
 
-		err := wrapped.ServeHTTP(w, req)
+		err := wrapped.ServeHTTP(rec, req)
+
 		require.NoError(t, err)
-
-		assert.Contains(t, logMessages, "failed to write sessions")
+		assert.True(t, handlerCalled)
+		assert.Contains(t, logBuffer.String(), "failed to write sessions")
+		mockStore.AssertExpectations(t)
+		mockCodec.AssertExpectations(t)
 	})
 }
 
-func TestMiddleware_ObjectPool(t *testing.T) {
-	t.Run("sessionWriter is reused from pool", func(t *testing.T) {
-		store := &MockStore{}
-		store.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-		registry := NewRegistry(New(Config{
-			Cookie: Cookie{Name: "test"},
-		}, store))
+func TestSessionWriter(t *testing.T) {
+	t.Run("reset sets all fields", func(t *testing.T) {
+		sw := &sessionWriter{}
+		registry := NewRegistry(createTestSession("test"))
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+		logger := slog.New(slog.DiscardHandler)
+
+		sw.reset(rec, req, registry, logger)
+
+		assert.Equal(t, rec, sw.ResponseWriter)
+		assert.Equal(t, req, sw.request)
+		assert.Equal(t, registry, sw.registry)
+		assert.Equal(t, logger, sw.logger)
+	})
+
+	t.Run("reset with nil values", func(t *testing.T) {
+		sw := &sessionWriter{
+			ResponseWriter: httptest.NewRecorder(),
+			request:        httptest.NewRequest(http.MethodGet, "/", nil),
+			registry:       NewRegistry(createTestSession("test")),
+			logger:         slog.New(slog.DiscardHandler),
+		}
+
+		sw.reset(nil, nil, nil, nil)
+
+		assert.Nil(t, sw.ResponseWriter)
+		assert.Nil(t, sw.request)
+		assert.Nil(t, sw.registry)
+		assert.Nil(t, sw.logger)
+	})
+
+	t.Run("WriteHeader calls WriteSessions", func(t *testing.T) {
+		mockStore := &MockStore{}
+		mockCodec := &MockCodec{}
+		mockCodec.On("Encode", mock.Anything, mock.Anything).Return([]byte("encoded"), nil)
+		mockStore.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+		session := NewWithCodec(Config{Cookie: Cookie{Name: "test"}}, mockStore, mockCodec)
+		registry := NewRegistry(session)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+		logger := slog.New(slog.DiscardHandler)
+
+		ctx, err := session.Load(req.Context(), "")
+		require.NoError(t, err)
+		req = req.WithContext(ctx)
+
+		sw := &sessionWriter{}
+		sw.reset(rec, req, registry, logger)
+
+		s := registry.Get("test")
+		s.Put(req.Context(), "key", "value")
+
+		sw.WriteHeader(http.StatusOK)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		mockStore.AssertExpectations(t)
+		mockCodec.AssertExpectations(t)
+	})
+
+	t.Run("WriteHeader logs error on WriteSessions failure", func(t *testing.T) {
+		var logBuffer bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
+
+		mockStore := &MockStore{}
+		mockCodec := &MockCodec{}
+		mockCodec.On("Encode", mock.Anything, mock.Anything).Return([]byte("encoded"), nil)
+		mockStore.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("write error"))
+
+		session := NewWithCodec(Config{Cookie: Cookie{Name: "test"}}, mockStore, mockCodec)
+		registry := NewRegistry(session)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		ctx, err := session.Load(req.Context(), "")
+		require.NoError(t, err)
+		req = req.WithContext(ctx)
+
+		sw := &sessionWriter{}
+		sw.reset(rec, req, registry, logger)
+
+		s := registry.Get("test")
+		s.Put(req.Context(), "key", "value")
+
+		sw.WriteHeader(http.StatusOK)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Contains(t, logBuffer.String(), "failed to write sessions")
+		mockStore.AssertExpectations(t)
+		mockCodec.AssertExpectations(t)
+	})
+
+	t.Run("Unwrap returns underlying ResponseWriter", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		sw := &sessionWriter{ResponseWriter: rec}
+
+		unwrapped := sw.Unwrap()
+
+		assert.Same(t, rec, unwrapped)
+	})
+
+	t.Run("Unwrap returns nil when ResponseWriter is nil", func(t *testing.T) {
+		sw := &sessionWriter{ResponseWriter: nil}
+
+		unwrapped := sw.Unwrap()
+
+		assert.Nil(t, unwrapped)
+	})
+
+	t.Run("WriteHeader with destroyed session", func(t *testing.T) {
+		mockStore := &MockStore{}
+		mockCodec := &MockCodec{}
+		mockStore.On("Delete", mock.Anything, mock.Anything).Return(nil)
+
+		session := NewWithCodec(Config{Cookie: Cookie{Name: "test"}}, mockStore, mockCodec)
+		registry := NewRegistry(session)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+		logger := slog.New(slog.DiscardHandler)
+
+		ctx, err := session.Load(req.Context(), "")
+		require.NoError(t, err)
+		req = req.WithContext(ctx)
+
+		sw := &sessionWriter{}
+		sw.reset(rec, req, registry, logger)
+
+		s := registry.Get("test")
+		s.Put(req.Context(), "key", "value")
+		_ = s.Destroy(req.Context())
+
+		sw.WriteHeader(http.StatusOK)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		cookies := rec.Result().Cookies()
+		assert.Len(t, cookies, 1)
+		assert.Equal(t, "test", cookies[0].Name)
+		assert.Equal(t, -1, cookies[0].MaxAge)
+		mockStore.AssertExpectations(t)
+		mockCodec.AssertExpectations(t)
+	})
+
+	t.Run("WriteHeader with unmodified session", func(t *testing.T) {
+		mockStore := &MockStore{}
+		mockCodec := &MockCodec{}
+
+		session := NewWithCodec(Config{Cookie: Cookie{Name: "test"}}, mockStore, mockCodec)
+		registry := NewRegistry(session)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+		logger := slog.New(slog.DiscardHandler)
+
+		ctx, err := session.Load(req.Context(), "")
+		require.NoError(t, err)
+		req = req.WithContext(ctx)
+
+		sw := &sessionWriter{}
+		sw.reset(rec, req, registry, logger)
+
+		sw.WriteHeader(http.StatusOK)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		cookies := rec.Result().Cookies()
+		assert.Len(t, cookies, 0)
+		mockStore.AssertExpectations(t)
+	})
+}
+
+func TestMiddlewareIntegration(t *testing.T) {
+	t.Run("full session lifecycle with HTTPMiddleware", func(t *testing.T) {
+		mockStore := &MockStore{}
+		mockCodec := &MockCodec{}
+
+		mockCodec.On("Encode", mock.Anything, mock.Anything).Return([]byte("encoded"), nil)
+		mockStore.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+		session := NewWithCodec(Config{Cookie: Cookie{Name: "user"}}, mockStore, mockCodec)
+		registry := NewRegistry(session)
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			s := registry.Get("user")
+			s.Put(ctx, "userID", "123")
+			w.WriteHeader(http.StatusOK)
+		})
+
+		mw := HTTPMiddleware(registry, nil)
+		wrapped := mw(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		cookies := rec.Result().Cookies()
+		assert.Len(t, cookies, 1)
+		assert.Equal(t, "user", cookies[0].Name)
+		mockStore.AssertExpectations(t)
+		mockCodec.AssertExpectations(t)
+	})
+
+	t.Run("full session lifecycle with Middleware", func(t *testing.T) {
+		mockStore := &MockStore{}
+		mockCodec := &MockCodec{}
+
+		mockCodec.On("Encode", mock.Anything, mock.Anything).Return([]byte("encoded"), nil)
+		mockStore.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+		session := NewWithCodec(Config{Cookie: Cookie{Name: "user"}}, mockStore, mockCodec)
+		registry := NewRegistry(session)
 
 		handler := keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-			session := registry.Get("test")
-			session.Put(r.Context(), "key", "value")
+			ctx := r.Context()
+			s := registry.Get("user")
+			s.Put(ctx, "userID", "123")
 			w.WriteHeader(http.StatusOK)
 			return nil
 		})
 
-		mw := Middleware(registry, slog.New(slog.DiscardHandler))
+		mw := Middleware(registry, nil)
 		wrapped := mw(handler)
 
-		var firstWriter *sessionWriter
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
 
-		for i := 0; i < 3; i++ {
-			w := &captureWriter{ResponseWriter: httptest.NewRecorder()}
-			req := httptest.NewRequest(http.MethodGet, "/", nil)
+		err := wrapped.ServeHTTP(rec, req)
 
-			err := wrapped.ServeHTTP(w, req)
-			require.NoError(t, err)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
 
-			if i == 0 {
-				firstWriter = w.capturedWriter
-			} else {
-				assert.Equal(t, firstWriter, w.capturedWriter, "sessionWriter should be reused from pool")
-			}
+		cookies := rec.Result().Cookies()
+		assert.Len(t, cookies, 1)
+		assert.Equal(t, "user", cookies[0].Name)
+		mockStore.AssertExpectations(t)
+		mockCodec.AssertExpectations(t)
+	})
+
+	t.Run("multiple sessions in registry", func(t *testing.T) {
+		mockStore := &MockStore{}
+		mockCodec := &MockCodec{}
+
+		mockCodec.On("Encode", mock.Anything, mock.Anything).Return([]byte("encoded"), nil).Twice()
+		mockStore.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Twice()
+
+		session1 := NewWithCodec(Config{Cookie: Cookie{Name: "user"}}, mockStore, mockCodec)
+		session2 := NewWithCodec(Config{Cookie: Cookie{Name: "admin"}}, mockStore, mockCodec)
+		registry := NewRegistry(session1, session2)
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			userSession := registry.Get("user")
+			adminSession := registry.Get("admin")
+			userSession.Put(ctx, "userID", "123")
+			adminSession.Put(ctx, "adminID", "456")
+			w.WriteHeader(http.StatusOK)
+		})
+
+		mw := HTTPMiddleware(registry, nil)
+		wrapped := mw(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		cookies := rec.Result().Cookies()
+		assert.Len(t, cookies, 2)
+
+		cookieNames := make(map[string]bool)
+		for _, cookie := range cookies {
+			cookieNames[cookie.Name] = true
 		}
+		assert.True(t, cookieNames["user"])
+		assert.True(t, cookieNames["admin"])
+		mockStore.AssertExpectations(t)
+		mockCodec.AssertExpectations(t)
 	})
 }
 
-type customResponseWriter struct {
-	http.ResponseWriter
-	beforeWriteHeader func()
+func TestMiddlewareSkipper(t *testing.T) {
+	t.Run("uses PrefixPathSkipper", func(t *testing.T) {
+		session := createTestSession("test")
+		registry := NewRegistry(session)
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		skipper := middleware.PrefixPathSkipper("/health", "/metrics")
+
+		mw := HTTPMiddleware(registry, nil, skipper)
+		wrapped := mw(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("uses SuffixPathSkipper", func(t *testing.T) {
+		session := createTestSession("test")
+		registry := NewRegistry(session)
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		skipper := middleware.SuffixPathSkipper(".js", ".css")
+
+		mw := HTTPMiddleware(registry, nil, skipper)
+		wrapped := mw(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("uses EqualPathSkipper", func(t *testing.T) {
+		session := createTestSession("test")
+		registry := NewRegistry(session)
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		skipper := middleware.EqualPathSkipper("/health", "/ready")
+
+		mw := HTTPMiddleware(registry, nil, skipper)
+		wrapped := mw(handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		rec := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
 }
 
-func (w *customResponseWriter) WriteHeader(code int) {
-	w.beforeWriteHeader()
-	w.ResponseWriter.WriteHeader(code)
-}
-
-type testLogHandler struct {
-	slog.Handler
-	logFunc func(r slog.Record)
-}
-
-func (h *testLogHandler) Handle(ctx context.Context, r slog.Record) error {
-	h.logFunc(r)
-	return nil
-}
-
-func (h *testLogHandler) WithGroup(name string) slog.Handler {
-	return h
-}
-
-func (h *testLogHandler) Enabled(ctx context.Context, level slog.Level) bool {
-	return true
-}
-
-type captureWriter struct {
-	http.ResponseWriter
-	capturedWriter *sessionWriter
-}
-
-func (w *captureWriter) WriteHeader(code int) {
-	if sw, ok := w.ResponseWriter.(*sessionWriter); ok {
-		w.capturedWriter = sw
+func createTestSessionWithStore(name string, store Store) *Session {
+	config := Config{
+		Cookie: Cookie{
+			Name: name,
+		},
 	}
-	w.ResponseWriter.WriteHeader(code)
+	return New(config, store)
 }
