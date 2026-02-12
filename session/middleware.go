@@ -1,10 +1,10 @@
 package session
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/gowool/keratin"
 	"github.com/gowool/keratin/middleware"
@@ -35,36 +35,17 @@ func Middleware(registry *Registry, logger *slog.Logger, skippers ...middleware.
 				pool.Put(response)
 			}()
 
-			for _, s := range registry.All() {
-				s := s
-
-				req, err := s.ReadSessionCookie(r)
-				if err != nil {
-					return err
-				}
-
-				r = req
-
-				response.before = append(response.before, func() {
-					ctx := req.Context()
-
-					switch s.Status(ctx) {
-					case Modified:
-						token, expiry, err := s.Commit(ctx)
-						if err != nil {
-							if logger != nil {
-								logger.Error("failed to commit session", "name", s.config.Cookie.Name, "error", err)
-							}
-							return
-						}
-
-						s.WriteSessionCookie(ctx, response, token, expiry)
-					case Destroyed:
-						s.WriteSessionCookie(ctx, response, "", time.Time{})
-					default:
-					}
-				})
+			req, err := registry.ReadSessions(r)
+			if err != nil {
+				return fmt.Errorf("failed to read sessions: %w", err)
 			}
+			r = req
+
+			response.before = append(response.before, func() {
+				if err := registry.WriteSessions(response, req); err != nil {
+					logger.Error("failed to write sessions", "error", err)
+				}
+			})
 
 			return next.ServeHTTP(response, r)
 		})

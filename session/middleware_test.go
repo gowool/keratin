@@ -406,7 +406,7 @@ func TestMiddleware_Logging(t *testing.T) {
 		err := wrapped.ServeHTTP(w, req)
 		require.NoError(t, err)
 
-		assert.Contains(t, logMessages, "failed to commit session")
+		assert.Contains(t, logMessages, "failed to write sessions")
 	})
 }
 

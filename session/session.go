@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gowool/keratin"
@@ -78,8 +79,16 @@ func (s *Session) WriteSessionCookie(ctx context.Context, w http.ResponseWriter,
 		cookie.MaxAge = int(time.Until(expiry).Seconds() + 1) // Round up to the nearest second.
 	}
 
-	w.Header().Set(keratin.HeaderVary, "Cookie")
-	w.Header().Add(keratin.HeaderCacheControl, `no-cache="Set-Cookie"`)
+	var found bool
+	for _, header := range w.Header().Values(keratin.HeaderCacheControl) {
+		if found = strings.Contains(header, "Set-Cookie"); found {
+			break
+		}
+	}
+	if !found {
+		w.Header().Add(keratin.HeaderVary, "Cookie")
+		w.Header().Add(keratin.HeaderCacheControl, `no-cache="Set-Cookie"`)
+	}
 
 	http.SetCookie(w, cookie)
 }
