@@ -52,14 +52,14 @@ func ResponseSize(w http.ResponseWriter) int64 {
 	if sz := ResponseSizer(w); sz != nil {
 		return sz.Size()
 	}
-	panic("ResponseWriter does not implement Sizer interface")
+	return 0
 }
 
 func ResponseCommitted(w http.ResponseWriter) bool {
 	if c := ResponseCommitter(w); c != nil {
 		return c.Committed()
 	}
-	panic("ResponseWriter does not implement Committer interface")
+	return false
 }
 
 func ResponseCommitter(w http.ResponseWriter) Committer {

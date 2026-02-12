@@ -10,6 +10,46 @@ import (
 	"github.com/gowool/keratin/middleware"
 )
 
+func HTTPMiddleware(registry *Registry, logger *slog.Logger, skippers ...middleware.Skipper) func(next http.Handler) http.Handler {
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
+
+	logger = logger.WithGroup("http_session")
+
+	skip := middleware.ChainSkipper(skippers...)
+
+	pool := &sync.Pool{New: func() any { return new(sessionWriter) }}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if len(registry.All()) == 0 || skip(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			r, err := registry.ReadSessions(r)
+			if err != nil {
+				logger.Error("failed to read sessions", "error", err)
+
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+
+				return
+			}
+
+			response := pool.Get().(*sessionWriter)
+			response.reset(w, r, registry, logger)
+
+			defer func() {
+				response.reset(nil, nil, nil, nil)
+				pool.Put(response)
+			}()
+
+			next.ServeHTTP(response, r)
+		})
+	}
+}
+
 func Middleware(registry *Registry, logger *slog.Logger, skippers ...middleware.Skipper) func(keratin.Handler) keratin.Handler {
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
@@ -22,30 +62,22 @@ func Middleware(registry *Registry, logger *slog.Logger, skippers ...middleware.
 	pool := &sync.Pool{New: func() any { return new(sessionWriter) }}
 
 	return func(next keratin.Handler) keratin.Handler {
-		return keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		return keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) (err error) {
 			if len(registry.All()) == 0 || skip(r) {
 				return next.ServeHTTP(w, r)
 			}
 
-			response := pool.Get().(*sessionWriter)
-			response.reset(w)
-
-			defer func() {
-				response.reset(nil)
-				pool.Put(response)
-			}()
-
-			req, err := registry.ReadSessions(r)
-			if err != nil {
+			if r, err = registry.ReadSessions(r); err != nil {
 				return fmt.Errorf("failed to read sessions: %w", err)
 			}
-			r = req
 
-			response.before = append(response.before, func() {
-				if err := registry.WriteSessions(response, req); err != nil {
-					logger.Error("failed to write sessions", "error", err)
-				}
-			})
+			response := pool.Get().(*sessionWriter)
+			response.reset(w, r, registry, logger)
+
+			defer func() {
+				response.reset(nil, nil, nil, nil)
+				pool.Put(response)
+			}()
 
 			return next.ServeHTTP(response, r)
 		})
@@ -54,17 +86,21 @@ func Middleware(registry *Registry, logger *slog.Logger, skippers ...middleware.
 
 type sessionWriter struct {
 	http.ResponseWriter
-	before []func()
+	request  *http.Request
+	registry *Registry
+	logger   *slog.Logger
 }
 
-func (sw *sessionWriter) reset(w http.ResponseWriter) {
+func (sw *sessionWriter) reset(w http.ResponseWriter, request *http.Request, registry *Registry, logger *slog.Logger) {
 	sw.ResponseWriter = w
-	sw.before = nil
+	sw.request = request
+	sw.registry = registry
+	sw.logger = logger
 }
 
 func (sw *sessionWriter) WriteHeader(code int) {
-	for _, fn := range sw.before {
-		fn()
+	if err := sw.registry.WriteSessions(sw, sw.request); err != nil {
+		sw.logger.Error("failed to write sessions", "error", err)
 	}
 	sw.ResponseWriter.WriteHeader(code)
 }

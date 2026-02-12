@@ -159,10 +159,9 @@ func TestResponseStatusCoder(t *testing.T) {
 
 func TestResponseSizer(t *testing.T) {
 	tests := []struct {
-		name      string
-		w         http.ResponseWriter
-		want      Sizer
-		wantPanic bool
+		name string
+		w    http.ResponseWriter
+		want Sizer
 	}{
 		{
 			name: "sizer implemented",
@@ -194,25 +193,18 @@ func TestResponseSizer(t *testing.T) {
 			}(),
 		},
 		{
-			name:      "no sizer implementation",
-			w:         httptest.NewRecorder(),
-			want:      nil,
-			wantPanic: false,
+			name: "no sizer implementation",
+			w:    httptest.NewRecorder(),
+			want: nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.wantPanic {
-				assert.Panics(t, func() {
-					ResponseSizer(tt.w)
-				})
-			} else {
-				got := ResponseSizer(tt.w)
-				assert.Equal(t, tt.want != nil, got != nil)
-				if tt.want != nil {
-					assert.Equal(t, tt.want.Size(), got.Size())
-				}
+			got := ResponseSizer(tt.w)
+			assert.Equal(t, tt.want != nil, got != nil)
+			if tt.want != nil {
+				assert.Equal(t, tt.want.Size(), got.Size())
 			}
 		})
 	}
@@ -378,11 +370,9 @@ func TestResponseStatus(t *testing.T) {
 
 func TestResponseSize(t *testing.T) {
 	tests := []struct {
-		name         string
-		w            http.ResponseWriter
-		wantSize     int64
-		wantPanic    bool
-		panicMessage string
+		name     string
+		w        http.ResponseWriter
+		wantSize int64
 	}{
 		{
 			name: "returns size from sizer",
@@ -404,23 +394,16 @@ func TestResponseSize(t *testing.T) {
 			wantSize: 8192,
 		},
 		{
-			name:         "panics when no sizer",
-			w:            httptest.NewRecorder(),
-			wantPanic:    true,
-			panicMessage: "ResponseWriter does not implement Sizer interface",
+			name:     "panics when no sizer",
+			w:        httptest.NewRecorder(),
+			wantSize: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.wantPanic {
-				assert.PanicsWithValue(t, tt.panicMessage, func() {
-					ResponseSize(tt.w)
-				})
-			} else {
-				got := ResponseSize(tt.w)
-				assert.Equal(t, tt.wantSize, got)
-			}
+			got := ResponseSize(tt.w)
+			assert.Equal(t, tt.wantSize, got)
 		})
 	}
 }
@@ -430,8 +413,6 @@ func TestResponseCommitted(t *testing.T) {
 		name          string
 		w             http.ResponseWriter
 		wantCommitted bool
-		wantPanic     bool
-		panicMessage  string
 	}{
 		{
 			name: "returns committed from committer",
@@ -453,23 +434,16 @@ func TestResponseCommitted(t *testing.T) {
 			wantCommitted: false,
 		},
 		{
-			name:         "panics when no committer",
-			w:            httptest.NewRecorder(),
-			wantPanic:    true,
-			panicMessage: "ResponseWriter does not implement Committer interface",
+			name:          "panics when no committer",
+			w:             httptest.NewRecorder(),
+			wantCommitted: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.wantPanic {
-				assert.PanicsWithValue(t, tt.panicMessage, func() {
-					ResponseCommitted(tt.w)
-				})
-			} else {
-				got := ResponseCommitted(tt.w)
-				assert.Equal(t, tt.wantCommitted, got)
-			}
+			got := ResponseCommitted(tt.w)
+			assert.Equal(t, tt.wantCommitted, got)
 		})
 	}
 }
