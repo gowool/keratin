@@ -4,6 +4,7 @@ package internal
 
 import (
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"io"
 )
 

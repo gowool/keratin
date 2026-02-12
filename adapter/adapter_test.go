@@ -272,7 +272,7 @@ func TestAdapter_ContextPooling(t *testing.T) {
 		}
 
 		handler := func(ctx huma.Context) {
-			rctx := ctx.(*rContext)
+			rctx := ctx.(*kContext)
 
 			assert.Equal(t, operation, rctx.op)
 			assert.NotNil(t, rctx.r)
@@ -310,7 +310,7 @@ func TestAdapter_ContextPooling(t *testing.T) {
 		}
 
 		adapter.Handle(operation, func(ctx huma.Context) {
-			rctx := ctx.(*rContext)
+			rctx := ctx.(*kContext)
 
 			assert.Equal(t, 0, rctx.status, "Status should start at 0")
 

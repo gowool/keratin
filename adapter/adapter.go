@@ -24,13 +24,13 @@ func NewAdapter(handler http.Handler, router router) *Adapter {
 	return &Adapter{
 		Handler: handler,
 		router:  router,
-		pool:    &sync.Pool{New: func() any { return new(rContext) }},
+		pool:    &sync.Pool{New: func() any { return new(kContext) }},
 	}
 }
 
 func (a *Adapter) Handle(op *huma.Operation, handler func(huma.Context)) {
 	a.router.RouteFunc(op.Method, op.Path, func(w http.ResponseWriter, r *http.Request) error {
-		ctx := a.pool.Get().(*rContext)
+		ctx := a.pool.Get().(*kContext)
 		ctx.reset(op, r, w)
 
 		defer func() {

@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func createTestContext() *rContext {
-	ctx := &rContext{}
+func createTestContext() *kContext {
+	ctx := &kContext{}
 
 	// Create a test HTTP request
 	req := httptest.NewRequest("GET", "http://example.com/test?foo=bar", nil)
@@ -38,11 +38,11 @@ func createTestContext() *rContext {
 }
 
 type wrapContext struct {
-	*rContext
+	*kContext
 }
 
 func (c *wrapContext) Unwrap() huma.Context {
-	return c.rContext
+	return c.kContext
 }
 
 func TestNewContext(t *testing.T) {
@@ -54,7 +54,7 @@ func Test_Unwrap(t *testing.T) {
 	t.Run("unwrap request and response", func(t *testing.T) {
 		ctx := createTestContext()
 
-		r, w := Unwrap(&wrapContext{rContext: ctx})
+		r, w := Unwrap(&wrapContext{kContext: ctx})
 
 		assert.NotNil(t, r)
 		assert.NotNil(t, w)
@@ -76,7 +76,7 @@ func TestWoContext_reset(t *testing.T) {
 
 	op := &huma.Operation{Method: "POST", Path: "/api"}
 
-	ctx := &rContext{}
+	ctx := &kContext{}
 	ctx.reset(op, req, resp)
 
 	assert.Equal(t, op, ctx.op)
@@ -422,7 +422,7 @@ func TestWoContext_BodyWriter(t *testing.T) {
 
 func TestWoContext_ImplementsHumaContext(t *testing.T) {
 	// This test ensures that woContext implements huma.Context interface
-	var _ huma.Context = (*rContext)(nil)
+	var _ huma.Context = (*kContext)(nil)
 
 	ctx := createTestContext()
 	assert.Implements(t, (*huma.Context)(nil), ctx)
