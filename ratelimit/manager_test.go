@@ -3,12 +3,45 @@ package ratelimit
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type mockStorage struct {
+	mu     sync.Mutex
+	data   map[string][]byte
+	getErr error
+	setErr error
+}
+
+func newMockStorage() *mockStorage {
+	return &mockStorage{
+		data: make(map[string][]byte),
+	}
+}
+
+func (m *mockStorage) Get(_ context.Context, key string) ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	return m.data[key], nil
+}
+
+func (m *mockStorage) Set(_ context.Context, key string, value []byte, _ time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.setErr != nil {
+		return m.setErr
+	}
+	m.data[key] = value
+	return nil
+}
 
 func TestManager_newManager(t *testing.T) {
 	t.Run("creates manager with storage and redactKeys true", func(t *testing.T) {
