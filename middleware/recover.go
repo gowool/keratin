@@ -24,10 +24,10 @@ func (c *RecoverConfig) SetDefaults() {
 
 func HTTPRecover(cfg RecoverConfig, logger *slog.Logger) func(next http.Handler) http.Handler {
 	if logger == nil {
-		logger = slog.New(slog.DiscardHandler)
+		logger = slog.Default()
 	}
 
-	logger = logger.WithGroup("http_recover")
+	logger = logger.WithGroup("recover")
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

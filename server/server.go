@@ -32,7 +32,7 @@ func New(cfg Config, handler http.Handler, logger *slog.Logger) *Server {
 	}
 
 	if logger == nil {
-		logger = slog.New(slog.DiscardHandler)
+		logger = slog.Default()
 	}
 
 	logger = logger.WithGroup("server")

@@ -86,10 +86,6 @@ type CORSConfig struct {
 	// See also: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Methods
 	AllowMethods []string `env:"ALLOW_METHODS" json:"allowMethods,omitempty" yaml:"allowMethods,omitempty"`
 
-	// AnyMethods determines the value of the Access-Control-Allow-Methods
-	// response header when accessing the resource for all methods
-	AnyMethods []string `eny:"ANY_METHODS" json:"anyMethods,omitempty" yaml:"anyMethods,omitempty"`
-
 	// AllowHeaders determines the value of the Access-Control-Allow-Headers
 	// response header.  This header is used in response to a preflight request to
 	// indicate which HTTP headers can be used when making the actual request.
@@ -135,26 +131,10 @@ type CORSConfig struct {
 	MaxAge int `env:"MAX_AGE" json:"maxAge,omitempty" yaml:"maxAge,omitempty"`
 }
 
-func CORS(cfg CORSConfig, skippers ...Skipper) func(keratin.Handler) keratin.Handler {
+func CORS(cfg CORSConfig, skippers ...Skipper) func(http.Handler) http.Handler {
 	skip := ChainSkipper(skippers...)
 
-	if len(cfg.AnyMethods) == 0 {
-		cfg.AnyMethods = []string{
-			http.MethodGet,
-			http.MethodHead,
-			http.MethodPost,
-			http.MethodPut,
-			http.MethodPatch,
-			http.MethodDelete,
-			http.MethodConnect,
-			http.MethodOptions,
-			http.MethodTrace,
-		}
-	}
-
-	hasCustomAllowMethods := true
 	if len(cfg.AllowMethods) == 0 {
-		hasCustomAllowMethods = false
 		cfg.AllowMethods = []string{
 			http.MethodGet,
 			http.MethodHead,
@@ -166,7 +146,6 @@ func CORS(cfg CORSConfig, skippers ...Skipper) func(keratin.Handler) keratin.Han
 		}
 	}
 
-	anyMethods := strings.Join(cfg.AnyMethods, ",")
 	allowMethods := strings.Join(cfg.AllowMethods, ",")
 	allowHeaders := strings.Join(cfg.AllowHeaders, ",")
 	exposeHeaders := strings.Join(cfg.ExposeHeaders, ",")
@@ -197,10 +176,11 @@ func CORS(cfg CORSConfig, skippers ...Skipper) func(keratin.Handler) keratin.Han
 		}
 	}
 
-	return func(next keratin.Handler) keratin.Handler {
-		return keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if skip(r) {
-				return next.ServeHTTP(w, r)
+				next.ServeHTTP(w, r)
+				return
 			}
 
 			origin := r.Header.Get(keratin.HeaderOrigin)
@@ -212,35 +192,21 @@ func CORS(cfg CORSConfig, skippers ...Skipper) func(keratin.Handler) keratin.Han
 			// For simplicity we just consider method type and later `Origin` header.
 			preflight := r.Method == http.MethodOptions
 
-			// Although router adds special handler in case of OPTIONS method we avoid calling next for OPTIONS in this middleware
-			// as CORS requests do not have cookies / authentication headers by default, so we could get stuck in auth
-			// middlewares by calling next.ServeHTTP(w, r).
-			// But we still want to send `Allow` header as response in case of Non-CORS OPTIONS request as router default
-			// handler does.
-			routerAllowMethods := ""
-			if preflight {
-				if c := keratin.FromContext(r.Context()); c.Pattern() != "" {
-					if c.AnyMethods() {
-						routerAllowMethods = anyMethods
-					} else {
-						routerAllowMethods = c.Methods()
-					}
-					w.Header().Set(keratin.HeaderAllow, routerAllowMethods)
-				}
-			}
-
 			// No Origin provided. This is (probably) not request from actual browser - proceed executing middleware chain
 			if origin == "" {
 				if preflight { // req.Method=OPTIONS
 					w.WriteHeader(http.StatusNoContent)
-					return nil
+					return
 				}
-				return next.ServeHTTP(w, r) // let non-browser calls through
+
+				next.ServeHTTP(w, r) // let non-browser calls through
+				return
 			}
 
 			allowedOrigin, allowed, err := allowOriginFunc(r, origin)
 			if err != nil {
-				return err
+				keratin.DefaultErrorHandler(w, r, err)
+				return
 			}
 			if !allowed {
 				// Origin existed and was NOT allowed
@@ -249,12 +215,13 @@ func CORS(cfg CORSConfig, skippers ...Skipper) func(keratin.Handler) keratin.Han
 					// the middleware should simply omit the relevant CORS headers from the response
 					// and let the browser fail the CORS check (if any).
 					w.WriteHeader(http.StatusNoContent)
-					return nil
+					return
 				}
 				// no CORS middleware should block non-preflight requests;
 				// such requests should be let through. One reason is that not all requests that
 				// carry an Origin header participate in the CORS protocol.
-				return next.ServeHTTP(w, r)
+				next.ServeHTTP(w, r)
+				return
 			}
 
 			// Origin existed and was allowed
@@ -269,7 +236,9 @@ func CORS(cfg CORSConfig, skippers ...Skipper) func(keratin.Handler) keratin.Han
 				if exposeHeaders != "" {
 					w.Header().Set(keratin.HeaderAccessControlExposeHeaders, exposeHeaders)
 				}
-				return next.ServeHTTP(w, r)
+
+				next.ServeHTTP(w, r)
+				return
 			}
 
 			// Below code is for Preflight (OPTIONS) request
@@ -279,12 +248,7 @@ func CORS(cfg CORSConfig, skippers ...Skipper) func(keratin.Handler) keratin.Han
 			// response code will confuse browsers
 			w.Header().Add(keratin.HeaderVary, keratin.HeaderAccessControlRequestMethod)
 			w.Header().Add(keratin.HeaderVary, keratin.HeaderAccessControlRequestHeaders)
-
-			if !hasCustomAllowMethods && routerAllowMethods != "" {
-				w.Header().Set(keratin.HeaderAccessControlAllowMethods, routerAllowMethods)
-			} else {
-				w.Header().Set(keratin.HeaderAccessControlAllowMethods, allowMethods)
-			}
+			w.Header().Set(keratin.HeaderAccessControlAllowMethods, allowMethods)
 
 			if allowHeaders != "" {
 				w.Header().Set(keratin.HeaderAccessControlAllowHeaders, allowHeaders)
@@ -300,8 +264,6 @@ func CORS(cfg CORSConfig, skippers ...Skipper) func(keratin.Handler) keratin.Han
 			}
 
 			w.WriteHeader(http.StatusNoContent)
-
-			return nil
 		})
 	}
 }

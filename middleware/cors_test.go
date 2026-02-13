@@ -44,12 +44,9 @@ func TestCORS(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	mw := CORS(CORSConfig{AllowOrigins: []string{"*"}})
-	handler := mw(keratin.HandlerFunc(func(http.ResponseWriter, *http.Request) error {
-		return nil
-	}))
+	handler := mw(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 
-	err := handler.ServeHTTP(rec, req)
-	assert.NoError(t, err)
+	handler.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 	assert.Equal(t, "*", rec.Header().Get(keratin.HeaderAccessControlAllowOrigin))
 }
@@ -277,9 +274,7 @@ func TestCORSConfig(t *testing.T) {
 			}
 
 			mw := CORS(tc.givenConfig, tc.skippers...)
-			h := mw(keratin.HandlerFunc(func(http.ResponseWriter, *http.Request) error {
-				return nil
-			}))
+			h := mw(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 
 			method := cmp.Or(tc.whenMethod, http.MethodGet)
 			req := httptest.NewRequest(method, "/", nil)
@@ -288,9 +283,8 @@ func TestCORSConfig(t *testing.T) {
 				req.Header.Set(k, v)
 			}
 
-			err := h.ServeHTTP(rec, req)
+			h.ServeHTTP(rec, req)
 
-			assert.NoError(t, err)
 			header := rec.Header()
 			for k, v := range tc.expectHeaders {
 				assert.Equal(t, v, header.Get(k), "header: `%v` should be `%v`", k, v)
@@ -341,11 +335,9 @@ func Test_AllowOriginScheme(t *testing.T) {
 		mw := CORS(CORSConfig{
 			AllowOrigins: []string{tt.pattern},
 		})
-		h := mw(keratin.HandlerFunc(func(http.ResponseWriter, *http.Request) error {
-			return keratin.ErrNotFound
-		}))
+		h := mw(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 
-		_ = h.ServeHTTP(rec, req)
+		h.ServeHTTP(rec, req)
 
 		if tt.expected {
 			assert.Equal(t, tt.domain, rec.Header().Get(keratin.HeaderAccessControlAllowOrigin))
@@ -357,13 +349,12 @@ func Test_AllowOriginScheme(t *testing.T) {
 
 func TestCorsHeaders(t *testing.T) {
 	tests := []struct {
-		name              string
-		originDomain      string
-		method            string
-		allowedOrigin     string
-		expected          bool
-		expectStatus      int
-		expectAllowHeader []string
+		name          string
+		originDomain  string
+		method        string
+		allowedOrigin string
+		expected      bool
+		expectStatus  int
 	}{
 		{
 			name:          "non-preflight request, allow any origin, missing origin header = no CORS logic done",
@@ -406,49 +397,44 @@ func TestCorsHeaders(t *testing.T) {
 			expectStatus:  http.StatusOK,
 		},
 		{
-			name:              "preflight, allow any origin, missing origin header = no CORS logic done",
-			originDomain:      "", // Request does not have Origin header
-			allowedOrigin:     "*",
-			method:            http.MethodOptions,
-			expected:          false,
-			expectStatus:      http.StatusNoContent,
-			expectAllowHeader: []string{"OPTIONS", "GET", "POST"},
+			name:          "preflight, allow any origin, missing origin header = no CORS logic done",
+			originDomain:  "", // Request does not have Origin header
+			allowedOrigin: "*",
+			method:        http.MethodOptions,
+			expected:      false,
+			expectStatus:  http.StatusNoContent,
 		},
 		{
-			name:              "preflight, allow any origin, existing origin header = CORS logic done",
-			originDomain:      "http://example.com",
-			allowedOrigin:     "*",
-			method:            http.MethodOptions,
-			expected:          true,
-			expectStatus:      http.StatusNoContent,
-			expectAllowHeader: []string{"OPTIONS", "GET", "POST"},
+			name:          "preflight, allow any origin, existing origin header = CORS logic done",
+			originDomain:  "http://example.com",
+			allowedOrigin: "*",
+			method:        http.MethodOptions,
+			expected:      true,
+			expectStatus:  http.StatusNoContent,
 		},
 		{
-			name:              "preflight, allow any origin, missing origin header = no CORS logic done",
-			originDomain:      "", // Request does not have Origin header
-			allowedOrigin:     "http://example.com",
-			method:            http.MethodOptions,
-			expected:          false,
-			expectStatus:      http.StatusNoContent,
-			expectAllowHeader: []string{"OPTIONS", "GET", "POST"},
+			name:          "preflight, allow any origin, missing origin header = no CORS logic done",
+			originDomain:  "", // Request does not have Origin header
+			allowedOrigin: "http://example.com",
+			method:        http.MethodOptions,
+			expected:      false,
+			expectStatus:  http.StatusNoContent,
 		},
 		{
-			name:              "preflight, allow specific origin, different origin header = no CORS logic done",
-			originDomain:      "http://bar.com",
-			allowedOrigin:     "http://example.com",
-			method:            http.MethodOptions,
-			expected:          false,
-			expectStatus:      http.StatusNoContent,
-			expectAllowHeader: []string{"OPTIONS", "GET", "POST"},
+			name:          "preflight, allow specific origin, different origin header = no CORS logic done",
+			originDomain:  "http://bar.com",
+			allowedOrigin: "http://example.com",
+			method:        http.MethodOptions,
+			expected:      false,
+			expectStatus:  http.StatusNoContent,
 		},
 		{
-			name:              "preflight, allow specific origin, matching origin header = CORS logic done",
-			originDomain:      "http://example.com",
-			allowedOrigin:     "http://example.com",
-			method:            http.MethodOptions,
-			expected:          true,
-			expectStatus:      http.StatusNoContent,
-			expectAllowHeader: []string{"OPTIONS", "GET", "POST"},
+			name:          "preflight, allow specific origin, matching origin header = CORS logic done",
+			originDomain:  "http://example.com",
+			allowedOrigin: "http://example.com",
+			method:        http.MethodOptions,
+			expected:      true,
+			expectStatus:  http.StatusNoContent,
 		},
 	}
 
@@ -456,7 +442,7 @@ func TestCorsHeaders(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			router := keratin.NewRouter()
 
-			router.UseFunc(CORS(CORSConfig{
+			router.PreHTTPFunc(CORS(CORSConfig{
 				AllowOrigins: []string{tc.allowedOrigin},
 			}))
 
@@ -484,11 +470,6 @@ func TestCorsHeaders(t *testing.T) {
 			router.Build().ServeHTTP(rec, req)
 
 			assert.Equal(t, keratin.HeaderOrigin, rec.Header().Get(keratin.HeaderVary))
-			if len(tc.expectAllowHeader) == 0 {
-				assert.Equal(t, "", rec.Header().Get(keratin.HeaderAllow))
-			} else {
-				assert.ElementsMatch(t, tc.expectAllowHeader, strings.Split(rec.Header().Get(keratin.HeaderAllow), ","))
-			}
 			assert.Equal(t, tc.expectStatus, rec.Code)
 
 			expectedAllowOrigin := ""
@@ -542,14 +523,12 @@ func Test_AllowOriginFunc(t *testing.T) {
 		req.Header.Set(keratin.HeaderOrigin, origin)
 
 		mw := CORS(CORSConfig{UnsafeAllowOriginFunc: allowOriginFunc})
-		h := mw(keratin.HandlerFunc(func(http.ResponseWriter, *http.Request) error {
-			return keratin.ErrNotFound
-		}))
-		err := h.ServeHTTP(rec, req)
+		h := mw(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+		h.ServeHTTP(rec, req)
 
 		allowedOrigin, allowed, expectedErr := allowOriginFunc(req, origin)
 		if expectedErr != nil {
-			assert.Equal(t, expectedErr, err)
+			assert.Equal(t, http.StatusInternalServerError, rec.Code)
 			assert.Equal(t, "", rec.Header().Get(keratin.HeaderAccessControlAllowOrigin))
 			continue
 		}

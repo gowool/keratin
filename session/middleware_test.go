@@ -9,14 +9,13 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/gowool/keratin"
 	"github.com/gowool/keratin/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-func TestHTTPMiddleware(t *testing.T) {
+func TestMiddleware(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
@@ -25,7 +24,7 @@ func TestHTTPMiddleware(t *testing.T) {
 	t.Run("skips when registry is empty", func(t *testing.T) {
 		registry := NewRegistry()
 
-		mw := HTTPMiddleware(registry, nil)
+		mw := Middleware(registry, nil)
 		wrapped := mw(handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -45,7 +44,7 @@ func TestHTTPMiddleware(t *testing.T) {
 			return r.URL.Path == "/skip"
 		}
 
-		mw := HTTPMiddleware(registry, nil, skipper)
+		mw := Middleware(registry, nil, skipper)
 		wrapped := mw(handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/skip", nil)
@@ -64,7 +63,7 @@ func TestHTTPMiddleware(t *testing.T) {
 		skipper1 := func(r *http.Request) bool { return false }
 		skipper2 := func(r *http.Request) bool { return r.URL.Path == "/skip" }
 
-		mw := HTTPMiddleware(registry, nil, skipper1, skipper2)
+		mw := Middleware(registry, nil, skipper1, skipper2)
 		wrapped := mw(handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/skip", nil)
@@ -80,7 +79,7 @@ func TestHTTPMiddleware(t *testing.T) {
 		session := createTestSession("test")
 		registry := NewRegistry(session)
 
-		mw := HTTPMiddleware(registry, nil)
+		mw := Middleware(registry, nil)
 		wrapped := mw(handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -102,7 +101,7 @@ func TestHTTPMiddleware(t *testing.T) {
 		session := createTestSessionWithStore("test", mockStore)
 		registry := NewRegistry(session)
 
-		mw := HTTPMiddleware(registry, logger)
+		mw := Middleware(registry, logger)
 		wrapped := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -127,7 +126,7 @@ func TestHTTPMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		mw := HTTPMiddleware(registry, nil)
+		mw := Middleware(registry, nil)
 		wrapped := mw(handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -145,7 +144,7 @@ func TestHTTPMiddleware(t *testing.T) {
 
 		var poolCalls int32
 
-		mw := HTTPMiddleware(registry, nil)
+		mw := Middleware(registry, nil)
 		wrapped := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			atomic.AddInt32(&poolCalls, 1)
 			w.WriteHeader(http.StatusOK)
@@ -174,7 +173,7 @@ func TestHTTPMiddleware(t *testing.T) {
 
 		handlerCalled := false
 
-		mw := HTTPMiddleware(registry, logger)
+		mw := Middleware(registry, logger)
 		wrapped := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			handlerCalled = true
 			ctx := r.Context()
@@ -190,154 +189,6 @@ func TestHTTPMiddleware(t *testing.T) {
 
 		assert.True(t, handlerCalled)
 		assert.Equal(t, http.StatusOK, rec.Code)
-		assert.Contains(t, logBuffer.String(), "failed to write sessions")
-		mockStore.AssertExpectations(t)
-		mockCodec.AssertExpectations(t)
-	})
-}
-
-func TestMiddleware(t *testing.T) {
-	handler := keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-		return nil
-	})
-
-	t.Run("skips when registry is empty", func(t *testing.T) {
-		registry := NewRegistry()
-
-		mw := Middleware(registry, nil)
-		wrapped := mw(handler)
-
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		rec := httptest.NewRecorder()
-
-		err := wrapped.ServeHTTP(rec, req)
-
-		require.NoError(t, err)
-		assert.Equal(t, http.StatusOK, rec.Code)
-		assert.Equal(t, "OK", rec.Body.String())
-	})
-
-	t.Run("skips when skipper returns true", func(t *testing.T) {
-		session := createTestSession("test")
-		registry := NewRegistry(session)
-
-		skipper := func(r *http.Request) bool {
-			return r.URL.Path == "/skip"
-		}
-
-		mw := Middleware(registry, nil, skipper)
-		wrapped := mw(handler)
-
-		req := httptest.NewRequest(http.MethodGet, "/skip", nil)
-		rec := httptest.NewRecorder()
-
-		err := wrapped.ServeHTTP(rec, req)
-
-		require.NoError(t, err)
-		assert.Equal(t, http.StatusOK, rec.Code)
-		assert.Equal(t, "OK", rec.Body.String())
-	})
-
-	t.Run("returns error when ReadSessions fails", func(t *testing.T) {
-		mockStore := &MockStore{}
-		mockStore.On("Find", mock.Anything, mock.Anything).Return([]byte(nil), false, errors.New("read error"))
-
-		session := createTestSessionWithStore("test", mockStore)
-		registry := NewRegistry(session)
-
-		mw := Middleware(registry, nil)
-		wrapped := mw(keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-			return nil
-		}))
-
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.AddCookie(&http.Cookie{Name: "test", Value: "some-token"})
-		rec := httptest.NewRecorder()
-
-		err := wrapped.ServeHTTP(rec, req)
-
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to read sessions")
-		mockStore.AssertExpectations(t)
-	})
-
-	t.Run("creates sessionWriter and calls handler", func(t *testing.T) {
-		session := createTestSession("test")
-		registry := NewRegistry(session)
-
-		var called bool
-
-		mw := Middleware(registry, nil)
-		wrapped := mw(keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-			_, ok := w.(*sessionWriter)
-			called = ok
-			return nil
-		}))
-
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		rec := httptest.NewRecorder()
-
-		err := wrapped.ServeHTTP(rec, req)
-
-		require.NoError(t, err)
-		assert.True(t, called)
-	})
-
-	t.Run("uses pool for sessionWriter reuse", func(t *testing.T) {
-		session := createTestSession("test")
-		registry := NewRegistry(session)
-
-		var poolCalls int32
-
-		mw := Middleware(registry, nil)
-		wrapped := mw(keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-			atomic.AddInt32(&poolCalls, 1)
-			return nil
-		}))
-
-		for i := 0; i < 5; i++ {
-			req := httptest.NewRequest(http.MethodGet, "/", nil)
-			rec := httptest.NewRecorder()
-			err := wrapped.ServeHTTP(rec, req)
-			require.NoError(t, err)
-		}
-
-		assert.Equal(t, int32(5), atomic.LoadInt32(&poolCalls))
-	})
-
-	t.Run("logs error when WriteSessions fails", func(t *testing.T) {
-		var logBuffer bytes.Buffer
-		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
-
-		mockStore := &MockStore{}
-		mockCodec := &MockCodec{}
-		mockCodec.On("Encode", mock.Anything, mock.Anything).Return([]byte("encoded"), nil)
-		mockStore.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("write error"))
-
-		session := NewWithCodec(Config{Cookie: Cookie{Name: "test"}}, mockStore, mockCodec)
-		registry := NewRegistry(session)
-
-		handlerCalled := false
-
-		mw := Middleware(registry, logger)
-		wrapped := mw(keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-			handlerCalled = true
-			ctx := r.Context()
-			s := registry.Get("test")
-			s.Put(ctx, "key", "value")
-			w.WriteHeader(http.StatusOK)
-			return nil
-		}))
-
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		rec := httptest.NewRecorder()
-
-		err := wrapped.ServeHTTP(rec, req)
-
-		require.NoError(t, err)
-		assert.True(t, handlerCalled)
 		assert.Contains(t, logBuffer.String(), "failed to write sessions")
 		mockStore.AssertExpectations(t)
 		mockCodec.AssertExpectations(t)
@@ -516,7 +367,7 @@ func TestSessionWriter(t *testing.T) {
 }
 
 func TestMiddlewareIntegration(t *testing.T) {
-	t.Run("full session lifecycle with HTTPMiddleware", func(t *testing.T) {
+	t.Run("full session lifecycle with Middleware", func(t *testing.T) {
 		mockStore := &MockStore{}
 		mockCodec := &MockCodec{}
 
@@ -533,7 +384,7 @@ func TestMiddlewareIntegration(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		mw := HTTPMiddleware(registry, nil)
+		mw := Middleware(registry, nil)
 		wrapped := mw(handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -541,42 +392,6 @@ func TestMiddlewareIntegration(t *testing.T) {
 
 		wrapped.ServeHTTP(rec, req)
 
-		assert.Equal(t, http.StatusOK, rec.Code)
-
-		cookies := rec.Result().Cookies()
-		assert.Len(t, cookies, 1)
-		assert.Equal(t, "user", cookies[0].Name)
-		mockStore.AssertExpectations(t)
-		mockCodec.AssertExpectations(t)
-	})
-
-	t.Run("full session lifecycle with Middleware", func(t *testing.T) {
-		mockStore := &MockStore{}
-		mockCodec := &MockCodec{}
-
-		mockCodec.On("Encode", mock.Anything, mock.Anything).Return([]byte("encoded"), nil)
-		mockStore.On("Commit", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
-
-		session := NewWithCodec(Config{Cookie: Cookie{Name: "user"}}, mockStore, mockCodec)
-		registry := NewRegistry(session)
-
-		handler := keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-			ctx := r.Context()
-			s := registry.Get("user")
-			s.Put(ctx, "userID", "123")
-			w.WriteHeader(http.StatusOK)
-			return nil
-		})
-
-		mw := Middleware(registry, nil)
-		wrapped := mw(handler)
-
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		rec := httptest.NewRecorder()
-
-		err := wrapped.ServeHTTP(rec, req)
-
-		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
 		cookies := rec.Result().Cookies()
@@ -606,7 +421,7 @@ func TestMiddlewareIntegration(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		})
 
-		mw := HTTPMiddleware(registry, nil)
+		mw := Middleware(registry, nil)
 		wrapped := mw(handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -640,7 +455,7 @@ func TestMiddlewareSkipper(t *testing.T) {
 
 		skipper := middleware.PrefixPathSkipper("/health", "/metrics")
 
-		mw := HTTPMiddleware(registry, nil, skipper)
+		mw := Middleware(registry, nil, skipper)
 		wrapped := mw(handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -660,7 +475,7 @@ func TestMiddlewareSkipper(t *testing.T) {
 
 		skipper := middleware.SuffixPathSkipper(".js", ".css")
 
-		mw := HTTPMiddleware(registry, nil, skipper)
+		mw := Middleware(registry, nil, skipper)
 		wrapped := mw(handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)
@@ -680,7 +495,7 @@ func TestMiddlewareSkipper(t *testing.T) {
 
 		skipper := middleware.EqualPathSkipper("/health", "/ready")
 
-		mw := HTTPMiddleware(registry, nil, skipper)
+		mw := Middleware(registry, nil, skipper)
 		wrapped := mw(handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/health", nil)

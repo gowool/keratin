@@ -130,7 +130,7 @@ func TestHandlerFunc_HandlerInterface(t *testing.T) {
 	}
 }
 
-func TestErrorHandler_CommittedResponse(t *testing.T) {
+func TestDefaultErrorHandler_CommittedResponse(t *testing.T) {
 	tests := []struct {
 		name         string
 		setupRequest func(*http.Request) *http.Request
@@ -175,7 +175,7 @@ func TestErrorHandler_CommittedResponse(t *testing.T) {
 			w := tt.setupWriter()
 			r := tt.setupRequest(httptest.NewRequest(http.MethodGet, "/", nil))
 
-			ErrorHandler(w, r, ErrBadRequest)
+			DefaultErrorHandler(w, r, ErrBadRequest)
 
 			assert.Equal(t, tt.expectedCode, w.code)
 			assert.Equal(t, tt.expectedBody, w.ResponseWriter.(*httptest.ResponseRecorder).Body.String())
@@ -183,7 +183,7 @@ func TestErrorHandler_CommittedResponse(t *testing.T) {
 	}
 }
 
-func TestErrorHandler_HTTPErrorResponse(t *testing.T) {
+func TestDefaultErrorHandler_HTTPErrorResponse(t *testing.T) {
 	tests := []struct {
 		name           string
 		acceptHeader   string
@@ -285,7 +285,7 @@ func TestErrorHandler_HTTPErrorResponse(t *testing.T) {
 
 			wrapped := &response{}
 			wrapped.reset(w)
-			ErrorHandler(wrapped, r, tt.err)
+			DefaultErrorHandler(wrapped, r, tt.err)
 
 			assert.Equal(t, tt.expectedStatus, w.Code)
 			assert.Equal(t, tt.expectedBody, w.Body.String())
@@ -299,7 +299,7 @@ func TestErrorHandler_HTTPErrorResponse(t *testing.T) {
 	}
 }
 
-func TestErrorHandler_VariousErrorTypes(t *testing.T) {
+func TestDefaultErrorHandler_VariousErrorTypes(t *testing.T) {
 	tests := []struct {
 		name           string
 		err            error
@@ -364,14 +364,14 @@ func TestErrorHandler_VariousErrorTypes(t *testing.T) {
 
 			wrapped := &response{}
 			wrapped.reset(w)
-			ErrorHandler(wrapped, r, tt.err)
+			DefaultErrorHandler(wrapped, r, tt.err)
 
 			assert.Equal(t, tt.expectedStatus, w.Code)
 		})
 	}
 }
 
-func TestErrorHandler_JSONResponse(t *testing.T) {
+func TestDefaultErrorHandler_JSONResponse(t *testing.T) {
 	tests := []struct {
 		name         string
 		acceptHeader string
@@ -418,7 +418,7 @@ func TestErrorHandler_JSONResponse(t *testing.T) {
 
 			wrapped := &response{}
 			wrapped.reset(w)
-			ErrorHandler(wrapped, r, tt.err)
+			DefaultErrorHandler(wrapped, r, tt.err)
 
 			assert.Equal(t, MIMEApplicationJSON, w.Header().Get(HeaderContentType))
 			assert.JSONEq(t, tt.expectedJSON, w.Body.String())
@@ -426,7 +426,7 @@ func TestErrorHandler_JSONResponse(t *testing.T) {
 	}
 }
 
-func TestErrorHandler_PlainTextResponse(t *testing.T) {
+func TestDefaultErrorHandler_PlainTextResponse(t *testing.T) {
 	tests := []struct {
 		name         string
 		acceptHeader string
@@ -469,14 +469,14 @@ func TestErrorHandler_PlainTextResponse(t *testing.T) {
 
 			wrapped := &response{}
 			wrapped.reset(w)
-			ErrorHandler(wrapped, r, tt.err)
+			DefaultErrorHandler(wrapped, r, tt.err)
 
 			assert.Equal(t, tt.expectedBody, w.Body.String())
 		})
 	}
 }
 
-func TestErrorHandler_CaseInsensitiveAccept(t *testing.T) {
+func TestDefaultErrorHandler_CaseInsensitiveAccept(t *testing.T) {
 	tests := []struct {
 		name         string
 		acceptHeader string
@@ -527,7 +527,7 @@ func TestErrorHandler_CaseInsensitiveAccept(t *testing.T) {
 
 			wrapped := &response{}
 			wrapped.reset(w)
-			ErrorHandler(wrapped, r, ErrBadRequest)
+			DefaultErrorHandler(wrapped, r, ErrBadRequest)
 
 			if tt.expectJSON {
 				assert.Equal(t, MIMEApplicationJSON, w.Header().Get(HeaderContentType))
@@ -539,7 +539,7 @@ func TestErrorHandler_CaseInsensitiveAccept(t *testing.T) {
 	}
 }
 
-func TestErrorHandler_NilErrorPanic(t *testing.T) {
+func TestDefaultErrorHandler_NilErrorPanic(t *testing.T) {
 	t.Run("nil error causes panic in HTTPErrorStatusCode", func(t *testing.T) {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -547,12 +547,12 @@ func TestErrorHandler_NilErrorPanic(t *testing.T) {
 		wrapped := &response{}
 		wrapped.reset(w)
 		assert.Panics(t, func() {
-			ErrorHandler(wrapped, r, nil)
+			DefaultErrorHandler(wrapped, r, nil)
 		})
 	})
 }
 
-func TestErrorHandler_AcceptHeaderValues(t *testing.T) {
+func TestDefaultErrorHandler_AcceptHeaderValues(t *testing.T) {
 	tests := []struct {
 		name         string
 		acceptHeader string
@@ -604,7 +604,7 @@ func TestErrorHandler_AcceptHeaderValues(t *testing.T) {
 
 			wrapped := &response{}
 			wrapped.reset(w)
-			ErrorHandler(wrapped, r, tt.err)
+			DefaultErrorHandler(wrapped, r, tt.err)
 
 			body := w.Body.String()
 			if tt.checkJSON != nil {
@@ -617,7 +617,7 @@ func TestErrorHandler_AcceptHeaderValues(t *testing.T) {
 	}
 }
 
-func TestErrorHandler_StatusCodes(t *testing.T) {
+func TestDefaultErrorHandler_StatusCodes(t *testing.T) {
 	tests := []struct {
 		name string
 		err  error
@@ -642,7 +642,7 @@ func TestErrorHandler_StatusCodes(t *testing.T) {
 
 			wrapped := &response{}
 			wrapped.reset(w)
-			ErrorHandler(wrapped, r, tt.err)
+			DefaultErrorHandler(wrapped, r, tt.err)
 
 			assert.Equal(t, tt.code, w.Code)
 			assert.Equal(t, MIMEApplicationJSON, w.Header().Get(HeaderContentType))
@@ -652,7 +652,7 @@ func TestErrorHandler_StatusCodes(t *testing.T) {
 	}
 }
 
-func TestErrorHandler_ErrorMessagePriority(t *testing.T) {
+func TestDefaultErrorHandler_ErrorMessagePriority(t *testing.T) {
 	tests := []struct {
 		name        string
 		err         error
@@ -688,7 +688,7 @@ func TestErrorHandler_ErrorMessagePriority(t *testing.T) {
 
 			wrapped := &response{}
 			wrapped.reset(w)
-			ErrorHandler(wrapped, r, tt.err)
+			DefaultErrorHandler(wrapped, r, tt.err)
 
 			assert.JSONEq(t, `{"message":"`+tt.expectedMsg+`"}`, w.Body.String())
 		})
@@ -715,7 +715,7 @@ func TestHandler_ErrorHandlingFlow(t *testing.T) {
 
 		wrapped := &response{}
 		wrapped.reset(w)
-		ErrorHandler(wrapped, r, err)
+		DefaultErrorHandler(wrapped, r, err)
 
 		assert.Equal(t, http.StatusNotFound, w.Code)
 		assert.JSONEq(t, `{"message":"Not Found"}`, w.Body.String())
@@ -787,11 +787,10 @@ func TestHandlerFunc_ErrorPropagation(t *testing.T) {
 
 			if tt.expectError != nil {
 				require.Error(t, err)
-				var (
-					expectedHTTPErr *HTTPError
-					actualHTTPErr   *HTTPError
-				)
-				if errors.As(tt.expectError, &expectedHTTPErr) && errors.As(err, &actualHTTPErr) {
+
+				expectedHTTPErr, ok1 := errors.AsType[*HTTPError](tt.expectError)
+				actualHTTPErr, ok2 := errors.AsType[*HTTPError](err)
+				if ok1 && ok2 {
 					assert.Equal(t, expectedHTTPErr.Code, actualHTTPErr.Code)
 					assert.Equal(t, expectedHTTPErr.Message, actualHTTPErr.Message)
 				} else {
@@ -804,7 +803,7 @@ func TestHandlerFunc_ErrorPropagation(t *testing.T) {
 	}
 }
 
-func TestErrorHandler_HTTPStatusCodes(t *testing.T) {
+func TestDefaultErrorHandler_HTTPStatusCodes(t *testing.T) {
 	tests := []struct {
 		name         string
 		err          error
@@ -844,7 +843,7 @@ func TestErrorHandler_HTTPStatusCodes(t *testing.T) {
 
 			wrapped := &response{}
 			wrapped.reset(w)
-			ErrorHandler(wrapped, r, tt.err)
+			DefaultErrorHandler(wrapped, r, tt.err)
 
 			assert.Equal(t, tt.expectedCode, w.Code)
 		})

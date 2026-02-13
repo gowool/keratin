@@ -75,7 +75,7 @@ func NewRouter(options ...Option) *Router {
 		rPatterns:    make(map[string]*rPattern),
 		resPool:      sync.Pool{New: func() any { return new(response) }},
 		ctxPool:      sync.Pool{New: func() any { return new(kContext) }},
-		errorHandler: ErrorHandler,
+		errorHandler: DefaultErrorHandler,
 		ipExtractor:  RemoteIP,
 	}
 

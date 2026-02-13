@@ -1,21 +1,19 @@
 package session
 
 import (
-	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
 
-	"github.com/gowool/keratin"
 	"github.com/gowool/keratin/middleware"
 )
 
-func HTTPMiddleware(registry *Registry, logger *slog.Logger, skippers ...middleware.Skipper) func(next http.Handler) http.Handler {
+func Middleware(registry *Registry, logger *slog.Logger, skippers ...middleware.Skipper) func(next http.Handler) http.Handler {
 	if logger == nil {
-		logger = slog.New(slog.DiscardHandler)
+		logger = slog.Default()
 	}
 
-	logger = logger.WithGroup("http_session")
+	logger = logger.WithGroup("session")
 
 	skip := middleware.ChainSkipper(skippers...)
 
@@ -46,40 +44,6 @@ func HTTPMiddleware(registry *Registry, logger *slog.Logger, skippers ...middlew
 			}()
 
 			next.ServeHTTP(response, r)
-		})
-	}
-}
-
-func Middleware(registry *Registry, logger *slog.Logger, skippers ...middleware.Skipper) func(keratin.Handler) keratin.Handler {
-	if logger == nil {
-		logger = slog.New(slog.DiscardHandler)
-	}
-
-	logger = logger.WithGroup("session")
-
-	skip := middleware.ChainSkipper(skippers...)
-
-	pool := &sync.Pool{New: func() any { return new(sessionWriter) }}
-
-	return func(next keratin.Handler) keratin.Handler {
-		return keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) (err error) {
-			if len(registry.All()) == 0 || skip(r) {
-				return next.ServeHTTP(w, r)
-			}
-
-			if r, err = registry.ReadSessions(r); err != nil {
-				return fmt.Errorf("failed to read sessions: %w", err)
-			}
-
-			response := pool.Get().(*sessionWriter)
-			response.reset(w, r, registry, logger)
-
-			defer func() {
-				response.reset(nil, nil, nil, nil)
-				pool.Put(response)
-			}()
-
-			return next.ServeHTTP(response, r)
 		})
 	}
 }

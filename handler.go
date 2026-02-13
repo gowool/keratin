@@ -18,7 +18,7 @@ func (f HandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
 
 type ErrorHandlerFunc func(http.ResponseWriter, *http.Request, error)
 
-func ErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
+func DefaultErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
 	if ResponseCommitted(w) {
 		return
 	}
