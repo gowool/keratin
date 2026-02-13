@@ -1,4 +1,4 @@
-package middleware
+package ratelimit
 
 import (
 	"context"
@@ -9,11 +9,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_RateLimiterMemoryStorage(t *testing.T) {
+func Test_MemoryStorage(t *testing.T) {
 	t.Parallel()
 
 	t.Run("basic get set operations", func(t *testing.T) {
-		store := NewRateLimiterMemoryStorage(timestampFunc)
+		store := NewMemoryStorage(timestampFunc)
 		var (
 			key = "john-internal"
 			val = []byte("doe")
@@ -33,7 +33,7 @@ func Test_RateLimiterMemoryStorage(t *testing.T) {
 	})
 
 	t.Run("sets expiration correctly", func(t *testing.T) {
-		store := NewRateLimiterMemoryStorage(timestampFunc)
+		store := NewMemoryStorage(timestampFunc)
 		var (
 			key = "expiring-key"
 			val = []byte("expiring-value")
@@ -51,7 +51,7 @@ func Test_RateLimiterMemoryStorage(t *testing.T) {
 	})
 
 	t.Run("no expiration", func(t *testing.T) {
-		store := NewRateLimiterMemoryStorage(timestampFunc)
+		store := NewMemoryStorage(timestampFunc)
 		var (
 			key = "permanent-key"
 			val = []byte("permanent-value")
@@ -69,7 +69,7 @@ func Test_RateLimiterMemoryStorage(t *testing.T) {
 	})
 
 	t.Run("update existing key", func(t *testing.T) {
-		store := NewRateLimiterMemoryStorage(timestampFunc)
+		store := NewMemoryStorage(timestampFunc)
 		var (
 			key  = "update-key"
 			val1 = []byte("value1")
@@ -94,7 +94,7 @@ func Test_RateLimiterMemoryStorage(t *testing.T) {
 	})
 
 	t.Run("can update expiration", func(t *testing.T) {
-		store := NewRateLimiterMemoryStorage(timestampFunc)
+		store := NewMemoryStorage(timestampFunc)
 		var (
 			key = "exp-update-key"
 			val = []byte("exp-value")
@@ -120,7 +120,7 @@ func Test_RateLimiterMemoryStorage(t *testing.T) {
 	})
 
 	t.Run("negative ttl", func(t *testing.T) {
-		store := NewRateLimiterMemoryStorage(timestampFunc)
+		store := NewMemoryStorage(timestampFunc)
 		var (
 			key = "negative-ttl-key"
 			val = []byte("negative-value")
@@ -136,7 +136,7 @@ func Test_RateLimiterMemoryStorage(t *testing.T) {
 	})
 
 	t.Run("concurrent access", func(t *testing.T) {
-		store := NewRateLimiterMemoryStorage(timestampFunc)
+		store := NewMemoryStorage(timestampFunc)
 		var (
 			key = "concurrent-key"
 		)
@@ -178,7 +178,7 @@ func Test_RateLimiterMemoryStorage(t *testing.T) {
 
 	t.Run("store works with GC", func(t *testing.T) {
 		// Use the default store constructor which starts GC automatically
-		store := NewRateLimiterMemoryStorage(timestampFunc)
+		store := NewMemoryStorage(timestampFunc)
 
 		// Add permanent item to test basic functionality
 		err := store.Set(t.Context(), "permanent", []byte("permanent"), 0)
@@ -192,7 +192,7 @@ func Test_RateLimiterMemoryStorage(t *testing.T) {
 
 	t.Run("GC handles empty expired list", func(t *testing.T) {
 		// Create store manually to control GC timing
-		store := &RateLimiterMemoryStorage{
+		store := &MemoryStorage{
 			timeFunc: timestampFunc,
 			data:     make(map[string]rlMemItem),
 		}
@@ -214,7 +214,7 @@ func Test_RateLimiterMemoryStorage(t *testing.T) {
 	})
 
 	t.Run("GC handles item replacement", func(t *testing.T) {
-		store := &RateLimiterMemoryStorage{
+		store := &MemoryStorage{
 			timeFunc: timestampFunc,
 			data:     make(map[string]rlMemItem),
 		}
@@ -240,7 +240,7 @@ func Test_RateLimiterMemoryStorage(t *testing.T) {
 	})
 
 	t.Run("GC with multiple expired items", func(t *testing.T) {
-		store := &RateLimiterMemoryStorage{
+		store := &MemoryStorage{
 			timeFunc: timestampFunc,
 			data:     make(map[string]rlMemItem),
 		}
@@ -275,11 +275,11 @@ func Test_RateLimiterMemoryStorage(t *testing.T) {
 	})
 }
 
-func TestRateLimiterMemoryStorage_DefensiveCopying(t *testing.T) {
+func TestMemoryStorage_DefensiveCopying(t *testing.T) {
 	t.Parallel()
 
 	t.Run("defensive copying prevents mutation", func(t *testing.T) {
-		store := NewRateLimiterMemoryStorage(timestampFunc)
+		store := NewMemoryStorage(timestampFunc)
 		originalVal := []byte("original")
 		key := "copy-test-key"
 

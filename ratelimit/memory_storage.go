@@ -1,4 +1,4 @@
-package middleware
+package ratelimit
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"github.com/gowool/keratin/internal"
 )
 
-var _ RateLimiterStorage = (*RateLimiterMemoryStorage)(nil)
+var _ Storage = (*MemoryStorage)(nil)
 
 type rlMemItem struct {
 	v []byte // val
@@ -16,14 +16,14 @@ type rlMemItem struct {
 	e uint32 // exp
 }
 
-type RateLimiterMemoryStorage struct {
+type MemoryStorage struct {
 	timeFunc func() uint32
 	data     map[string]rlMemItem // data
 	mu       sync.RWMutex
 }
 
-func NewRateLimiterMemoryStorage(timestampFunc func() uint32) *RateLimiterMemoryStorage {
-	store := &RateLimiterMemoryStorage{
+func NewMemoryStorage(timestampFunc func() uint32) *MemoryStorage {
+	store := &MemoryStorage{
 		timeFunc: timestampFunc,
 		data:     make(map[string]rlMemItem),
 	}
@@ -36,7 +36,7 @@ func NewRateLimiterMemoryStorage(timestampFunc func() uint32) *RateLimiterMemory
 //
 // For []byte values, this returns a defensive copy to prevent callers from
 // mutating the stored data. Other types are returned as-is.
-func (s *RateLimiterMemoryStorage) Get(_ context.Context, key string) ([]byte, error) {
+func (s *MemoryStorage) Get(_ context.Context, key string) ([]byte, error) {
 	s.mu.RLock()
 	v, ok := s.data[key]
 	s.mu.RUnlock()
@@ -53,7 +53,7 @@ func (s *RateLimiterMemoryStorage) Get(_ context.Context, key string) ([]byte, e
 // String keys are defensively copied to prevent corruption from pooled buffers.
 // []byte values are also copied to prevent external mutation of stored data.
 // Other types are stored as-is (structs are copied by value automatically).
-func (s *RateLimiterMemoryStorage) Set(_ context.Context, key string, val []byte, ttl time.Duration) error {
+func (s *MemoryStorage) Set(_ context.Context, key string, val []byte, ttl time.Duration) error {
 	var exp uint32
 	if ttl > 0 {
 		exp = uint32(ttl.Seconds()) + s.timeFunc()
@@ -67,7 +67,7 @@ func (s *RateLimiterMemoryStorage) Set(_ context.Context, key string, val []byte
 	return nil
 }
 
-func (s *RateLimiterMemoryStorage) gc(sleep time.Duration) {
+func (s *MemoryStorage) gc(sleep time.Duration) {
 	ticker := time.NewTicker(sleep)
 	defer ticker.Stop()
 	var expired []string
