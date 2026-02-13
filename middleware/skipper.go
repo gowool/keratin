@@ -2,8 +2,11 @@ package middleware
 
 import (
 	"net/http"
+	"reflect"
 	"strings"
 
+	"github.com/expr-lang/expr"
+	"github.com/expr-lang/expr/vm"
 	"github.com/gowool/keratin/internal"
 )
 
@@ -67,4 +70,30 @@ func CheckMethod(method, pattern string) (string, bool) {
 		return "", false
 	}
 	return pattern, true
+}
+
+// ExpressionSkipper creates a Skipper function that evaluates expressions against an environment generated from requests.
+//
+// Documentation can be found here: https://expr-lang.org/
+func ExpressionSkipper[Env any](fn func(*http.Request) Env, expressions ...string) Skipper {
+	zero := reflect.Zero(reflect.TypeFor[Env]()).Interface()
+	programs := make([]*vm.Program, len(expressions))
+	for i, expression := range expressions {
+		program, err := expr.Compile(expression, expr.Env(zero), expr.AsBool())
+		if err != nil {
+			continue
+		}
+		programs[i] = program
+	}
+
+	return func(r *http.Request) bool {
+		env := fn(r)
+
+		for _, program := range programs {
+			if ok, err := expr.Run(program, env); err == nil && ok.(bool) {
+				return true
+			}
+		}
+		return false
+	}
 }
