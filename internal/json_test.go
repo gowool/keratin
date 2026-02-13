@@ -22,19 +22,19 @@ func TestMarshalJSON(t *testing.T) {
 	}{
 		{
 			name:    "simple object without indent",
-			input:   map[string]interface{}{"name": "John", "age": 30},
+			input:   map[string]any{"name": "John", "age": 30},
 			indent:  "",
 			wantErr: false,
 		},
 		{
 			name:    "simple object with indent",
-			input:   map[string]interface{}{"name": "John", "age": 30},
+			input:   map[string]any{"name": "John", "age": 30},
 			indent:  "  ",
 			wantErr: false,
 		},
 		{
 			name:    "nested object with indent",
-			input:   map[string]interface{}{"user": map[string]interface{}{"name": "John", "age": 30}, "active": true},
+			input:   map[string]any{"user": map[string]any{"name": "John", "age": 30}, "active": true},
 			indent:  "\t",
 			wantErr: false,
 		},
@@ -52,13 +52,13 @@ func TestMarshalJSON(t *testing.T) {
 		},
 		{
 			name:    "empty object",
-			input:   map[string]interface{}{},
+			input:   map[string]any{},
 			indent:  "",
 			wantErr: false,
 		},
 		{
 			name:    "empty array",
-			input:   []interface{}{},
+			input:   []any{},
 			indent:  "",
 			wantErr: false,
 		},
@@ -119,7 +119,7 @@ func TestMarshalJSON(t *testing.T) {
 			}
 
 			// Parse the output and compare with the original input
-			var parsedOutput interface{}
+			var parsedOutput any
 			err = json.Unmarshal([]byte(outputStr), &parsedOutput)
 			require.NoError(t, err, "Output should be valid JSON")
 
@@ -150,7 +150,7 @@ func TestMarshalJSONWithWriterErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			data := map[string]interface{}{"test": "data"}
+			data := map[string]any{"test": "data"}
 			err := MarshalJSON(tt.writer, data, "")
 
 			if tt.wantErr {
@@ -170,7 +170,7 @@ func TestMarshalJSONWithWriterErrors(t *testing.T) {
 			}
 		}()
 
-		data := map[string]interface{}{"test": "data"}
+		data := map[string]any{"test": "data"}
 		err := MarshalJSON(nil, data, "")
 		// If we get here without panic, that's also acceptable behavior
 		_ = err
@@ -179,7 +179,7 @@ func TestMarshalJSONWithWriterErrors(t *testing.T) {
 
 func TestMarshalJSONWithUnsupportedTypes(t *testing.T) {
 	// Test with a type that contains an unmarshalable channel
-	data := map[string]interface{}{
+	data := map[string]any{
 		"valid":   "data",
 		"invalid": make(chan int), // channels cannot be marshaled to JSON
 	}
@@ -213,8 +213,8 @@ func TestUnmarshalJSON(t *testing.T) {
 		{
 			name:     "simple object",
 			input:    `{"name":"John","age":30}`,
-			target:   &map[string]interface{}{},
-			expected: map[string]interface{}{"name": "John", "age": float64(30)},
+			target:   &map[string]any{},
+			expected: map[string]any{"name": "John", "age": float64(30)},
 			wantErr:  false,
 		},
 		{
@@ -227,22 +227,22 @@ func TestUnmarshalJSON(t *testing.T) {
 		{
 			name:     "array of objects",
 			input:    `[{"name":"John","age":30},{"name":"Jane","age":25}]`,
-			target:   &[]map[string]interface{}{},
-			expected: []map[string]interface{}{{"name": "John", "age": float64(30)}, {"name": "Jane", "age": float64(25)}},
+			target:   &[]map[string]any{},
+			expected: []map[string]any{{"name": "John", "age": float64(30)}, {"name": "Jane", "age": float64(25)}},
 			wantErr:  false,
 		},
 		{
 			name:     "empty object",
 			input:    `{}`,
-			target:   &map[string]interface{}{},
-			expected: map[string]interface{}{},
+			target:   &map[string]any{},
+			expected: map[string]any{},
 			wantErr:  false,
 		},
 		{
 			name:     "empty array",
 			input:    `[]`,
-			target:   &[]interface{}{},
-			expected: []interface{}{},
+			target:   &[]any{},
+			expected: []any{},
 			wantErr:  false,
 		},
 		{
@@ -290,15 +290,15 @@ func TestUnmarshalJSON(t *testing.T) {
 		{
 			name:     "nested object",
 			input:    `{"user":{"name":"John","age":30},"active":true}`,
-			target:   &map[string]interface{}{},
-			expected: map[string]interface{}{"user": map[string]interface{}{"name": "John", "age": float64(30)}, "active": true},
+			target:   &map[string]any{},
+			expected: map[string]any{"user": map[string]any{"name": "John", "age": float64(30)}, "active": true},
 			wantErr:  false,
 		},
 		{
 			name:     "mixed array",
 			input:    `[1,"two",true,null,{"nested":"value"}]`,
-			target:   &[]interface{}{},
-			expected: []interface{}{float64(1), "two", true, nil, map[string]interface{}{"nested": "value"}},
+			target:   &[]any{},
+			expected: []any{float64(1), "two", true, nil, map[string]any{"nested": "value"}},
 			wantErr:  false,
 		},
 	}
@@ -317,13 +317,13 @@ func TestUnmarshalJSON(t *testing.T) {
 
 			// Use assertions based on the target type
 			switch target := tt.target.(type) {
-			case *map[string]interface{}:
+			case *map[string]any:
 				assert.Equal(t, tt.expected, *target)
 			case *[]string:
 				assert.Equal(t, tt.expected, *target)
-			case *[]map[string]interface{}:
+			case *[]map[string]any:
 				assert.Equal(t, tt.expected, *target)
-			case *[]interface{}:
+			case *[]any:
 				assert.Equal(t, tt.expected, *target)
 			case *any:
 				assert.Equal(t, tt.expected, *target)
@@ -352,7 +352,7 @@ func TestUnmarshalJSONWithReaderErrors(t *testing.T) {
 		{
 			name:    "failing reader",
 			reader:  &failingReader{failOnRead: true},
-			target:  &map[string]interface{}{},
+			target:  &map[string]any{},
 			wantErr: true,
 		},
 	}
@@ -378,7 +378,7 @@ func TestUnmarshalJSONWithReaderErrors(t *testing.T) {
 			}
 		}()
 
-		var data map[string]interface{}
+		var data map[string]any
 		err := UnmarshalJSON(nil, &data)
 		// If we get here without panic, check if an error was returned instead
 		if err != nil {
@@ -396,27 +396,27 @@ func TestUnmarshalJSONWithInvalidJSON(t *testing.T) {
 		{
 			name:   "invalid syntax - missing comma",
 			input:  `{"name":"John" "age":30}`,
-			target: &map[string]interface{}{},
+			target: &map[string]any{},
 		},
 		{
 			name:   "invalid syntax - unclosed object",
 			input:  `{"name":"John","age":30`,
-			target: &map[string]interface{}{},
+			target: &map[string]any{},
 		},
 		{
 			name:   "invalid syntax - unclosed string",
 			input:  `{"name":"John","age":unclosed`,
-			target: &map[string]interface{}{},
+			target: &map[string]any{},
 		},
 		{
 			name:   "empty input",
 			input:  "",
-			target: &map[string]interface{}{},
+			target: &map[string]any{},
 		},
 		{
 			name:   "whitespace only",
 			input:  "   \t\n  ",
-			target: &map[string]interface{}{},
+			target: &map[string]any{},
 		},
 	}
 
@@ -470,7 +470,7 @@ func TestRoundTrip(t *testing.T) {
 		{
 			name:   "simple object no indent",
 			indent: "",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"name":   "John",
 				"age":    30,
 				"active": true,
@@ -479,7 +479,7 @@ func TestRoundTrip(t *testing.T) {
 		{
 			name:   "simple object with indent",
 			indent: "  ",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"name":   "John",
 				"age":    30,
 				"active": true,
@@ -488,19 +488,19 @@ func TestRoundTrip(t *testing.T) {
 		{
 			name:   "complex nested object",
 			indent: "\t",
-			input: map[string]interface{}{
-				"user": map[string]interface{}{
+			input: map[string]any{
+				"user": map[string]any{
 					"name": "John",
 					"age":  30,
-					"address": map[string]interface{}{
+					"address": map[string]any{
 						"street":  "123 Main St",
 						"city":    "Anytown",
 						"country": "USA",
 					},
 				},
-				"orders": []interface{}{
-					map[string]interface{}{"id": 1, "total": 99.99},
-					map[string]interface{}{"id": 2, "total": 149.99},
+				"orders": []any{
+					map[string]any{"id": 1, "total": 99.99},
+					map[string]any{"id": 2, "total": 149.99},
 				},
 				"active": true,
 			},
@@ -508,13 +508,13 @@ func TestRoundTrip(t *testing.T) {
 		{
 			name:   "array of mixed types",
 			indent: "  ",
-			input: []interface{}{
+			input: []any{
 				"string",
 				42,
 				true,
 				nil,
-				map[string]interface{}{"nested": "object"},
-				[]interface{}{1, 2, 3},
+				map[string]any{"nested": "object"},
+				[]any{1, 2, 3},
 			},
 		},
 	}
@@ -526,8 +526,8 @@ func TestRoundTrip(t *testing.T) {
 			err := MarshalJSON(&buf, tt.input, tt.indent)
 			require.NoError(t, err)
 
-			// Unmarshal back to interface{}
-			var result interface{}
+			// Unmarshal back to any
+			var result any
 			reader := bytes.NewReader(buf.Bytes())
 			err = UnmarshalJSON(reader, &result)
 			require.NoError(t, err)

@@ -1061,8 +1061,8 @@ func attrsToString(attrs []slog.Attr) string {
 	return sb.String()
 }
 
-func attrsToMap(attrs []slog.Attr) map[string]interface{} {
-	m := make(map[string]interface{})
+func attrsToMap(attrs []slog.Attr) map[string]any {
+	m := make(map[string]any)
 	for _, attr := range attrs {
 		m[attr.Key] = attr.Value.Any()
 	}

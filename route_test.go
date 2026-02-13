@@ -12,13 +12,13 @@ import (
 func TestRoute_UseFunc(t *testing.T) {
 	tests := []struct {
 		name               string
-		initialMiddlewares Middlewares
+		initialMiddlewares Middlewares[Handler]
 		middlewareFuncs    []func(Handler) Handler
 		expectedCount      int
 	}{
 		{
 			name:               "adds single middleware",
-			initialMiddlewares: Middlewares{},
+			initialMiddlewares: Middlewares[Handler]{},
 			middlewareFuncs: []func(Handler) Handler{
 				func(h Handler) Handler {
 					return HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
@@ -30,8 +30,8 @@ func TestRoute_UseFunc(t *testing.T) {
 			expectedCount: 1,
 		},
 		{
-			name:               "adds multiple Middlewares",
-			initialMiddlewares: Middlewares{},
+			name:               "adds multiple Middlewares[Handler]",
+			initialMiddlewares: Middlewares[Handler]{},
 			middlewareFuncs: []func(Handler) Handler{
 				func(h Handler) Handler {
 					return HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
@@ -55,9 +55,9 @@ func TestRoute_UseFunc(t *testing.T) {
 			expectedCount: 3,
 		},
 		{
-			name: "appends to existing Middlewares",
-			initialMiddlewares: Middlewares{
-				&Middleware{
+			name: "appends to existing Middlewares[Handler]",
+			initialMiddlewares: Middlewares[Handler]{
+				&Middleware[Handler]{
 					ID:       "existing-1",
 					Priority: 0,
 					Func: func(h Handler) Handler {
@@ -80,7 +80,7 @@ func TestRoute_UseFunc(t *testing.T) {
 		},
 		{
 			name:               "empty middleware funcs list",
-			initialMiddlewares: Middlewares{},
+			initialMiddlewares: Middlewares[Handler]{},
 			middlewareFuncs:    []func(Handler) Handler{},
 			expectedCount:      0,
 		},
@@ -115,7 +115,7 @@ func TestRoute_UseFunc_Execution(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}),
-		Middlewares: Middlewares{},
+		Middlewares: Middlewares[Handler]{},
 	}
 
 	route.UseFunc(
@@ -147,14 +147,14 @@ func TestRoute_UseFunc_Execution(t *testing.T) {
 func TestRoute_Use(t *testing.T) {
 	tests := []struct {
 		name               string
-		initialMiddlewares Middlewares
-		middlewares        []*Middleware
+		initialMiddlewares Middlewares[Handler]
+		middlewares        []*Middleware[Handler]
 		expectedCount      int
 	}{
 		{
 			name:               "adds single middleware",
-			initialMiddlewares: Middlewares{},
-			middlewares: []*Middleware{
+			initialMiddlewares: Middlewares[Handler]{},
+			middlewares: []*Middleware[Handler]{
 				{
 					ID:       "middleware-1",
 					Priority: 0,
@@ -169,9 +169,9 @@ func TestRoute_Use(t *testing.T) {
 			expectedCount: 1,
 		},
 		{
-			name:               "adds multiple Middlewares",
-			initialMiddlewares: Middlewares{},
-			middlewares: []*Middleware{
+			name:               "adds multiple Middlewares[Handler]",
+			initialMiddlewares: Middlewares[Handler]{},
+			middlewares: []*Middleware[Handler]{
 				{
 					ID:       "middleware-1",
 					Priority: 10,
@@ -203,9 +203,9 @@ func TestRoute_Use(t *testing.T) {
 			expectedCount: 3,
 		},
 		{
-			name: "appends to existing Middlewares",
-			initialMiddlewares: Middlewares{
-				&Middleware{
+			name: "appends to existing Middlewares[Handler]",
+			initialMiddlewares: Middlewares[Handler]{
+				&Middleware[Handler]{
 					ID:       "existing-1",
 					Priority: 0,
 					Func: func(h Handler) Handler {
@@ -215,7 +215,7 @@ func TestRoute_Use(t *testing.T) {
 					},
 				},
 			},
-			middlewares: []*Middleware{
+			middlewares: []*Middleware[Handler]{
 				{
 					ID:       "new-1",
 					Priority: 1,
@@ -229,9 +229,9 @@ func TestRoute_Use(t *testing.T) {
 			expectedCount: 2,
 		},
 		{
-			name:               "empty Middlewares list",
-			initialMiddlewares: Middlewares{},
-			middlewares:        []*Middleware{},
+			name:               "empty Middlewares[Handler] list",
+			initialMiddlewares: Middlewares[Handler]{},
+			middlewares:        []*Middleware[Handler]{},
 			expectedCount:      0,
 		},
 	}
@@ -265,11 +265,11 @@ func TestRoute_Use_Execution(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}),
-		Middlewares: Middlewares{},
+		Middlewares: Middlewares[Handler]{},
 	}
 
 	route.Use(
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "priority-10",
 			Priority: 10,
 			Func: func(h Handler) Handler {
@@ -279,7 +279,7 @@ func TestRoute_Use_Execution(t *testing.T) {
 				})
 			},
 		},
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "priority-5",
 			Priority: 5,
 			Func: func(h Handler) Handler {
@@ -289,7 +289,7 @@ func TestRoute_Use_Execution(t *testing.T) {
 				})
 			},
 		},
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "priority-0",
 			Priority: 0,
 			Func: func(h Handler) Handler {
@@ -321,7 +321,7 @@ func TestRoute_UseFunc_Chaining(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}),
-		Middlewares: Middlewares{},
+		Middlewares: Middlewares[Handler]{},
 	}
 
 	route.UseFunc(func(h Handler) Handler {
@@ -363,11 +363,11 @@ func TestRoute_Use_Chaining(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}),
-		Middlewares: Middlewares{},
+		Middlewares: Middlewares[Handler]{},
 	}
 
 	route.Use(
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "chain-1",
 			Priority: 10,
 			Func: func(h Handler) Handler {
@@ -378,7 +378,7 @@ func TestRoute_Use_Chaining(t *testing.T) {
 			},
 		},
 	).Use(
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "chain-2",
 			Priority: 5,
 			Func: func(h Handler) Handler {
@@ -411,7 +411,7 @@ func TestRoute_UseFunc_Use_Mixed(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}),
-		Middlewares: Middlewares{},
+		Middlewares: Middlewares[Handler]{},
 	}
 
 	route.UseFunc(func(h Handler) Handler {
@@ -420,7 +420,7 @@ func TestRoute_UseFunc_Use_Mixed(t *testing.T) {
 			return h.ServeHTTP(w, r)
 		})
 	}).Use(
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "use-method",
 			Priority: 5,
 			Func: func(h Handler) Handler {
@@ -459,7 +459,7 @@ func TestRoute_UseFunc_NoIDs(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}),
-		Middlewares: Middlewares{},
+		Middlewares: Middlewares[Handler]{},
 	}
 
 	route.UseFunc(func(h Handler) Handler {
@@ -485,11 +485,11 @@ func TestRoute_Use_NamedMiddlewares(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}),
-		Middlewares: Middlewares{},
+		Middlewares: Middlewares[Handler]{},
 	}
 
 	route.Use(
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "auth-middleware",
 			Priority: 0,
 			Func: func(h Handler) Handler {
@@ -498,7 +498,7 @@ func TestRoute_Use_NamedMiddlewares(t *testing.T) {
 				})
 			},
 		},
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "logging-middleware",
 			Priority: 1,
 			Func: func(h Handler) Handler {
@@ -525,11 +525,11 @@ func TestRoute_MiddlewareExecutionOrder(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}),
-		Middlewares: Middlewares{},
+		Middlewares: Middlewares[Handler]{},
 	}
 
 	route.Use(
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "priority-10",
 			Priority: 10,
 			Func: func(h Handler) Handler {
@@ -572,7 +572,7 @@ func TestRoute_UseFunc_NilHandler(t *testing.T) {
 		Method:      http.MethodGet,
 		Path:        "/test",
 		Handler:     nil,
-		Middlewares: Middlewares{},
+		Middlewares: Middlewares[Handler]{},
 	}
 
 	route.UseFunc(func(h Handler) Handler {
@@ -593,11 +593,11 @@ func TestRoute_Use_NilMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}),
-		Middlewares: Middlewares{},
+		Middlewares: Middlewares[Handler]{},
 	}
 
 	route.Use(
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "test",
 			Priority: 0,
 			Func:     nil,

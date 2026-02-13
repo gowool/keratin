@@ -34,7 +34,7 @@ func (m *mockRouter) RouteFunc(method string, path string, handler func(http.Res
 		handler: handler,
 	})
 	m.routeFuncCallCount++
-	return &keratin.Route{}
+	return new(keratin.Route)
 }
 
 func (m *mockRouter) GetCallCount() int {

@@ -8,7 +8,7 @@ import (
 type RouterGroup struct {
 	prefix      string
 	children    []any // Route or Group
-	Middlewares Middlewares
+	Middlewares Middlewares[Handler]
 }
 
 // Group creates and register a new child RouterGroup into the current one
@@ -38,14 +38,14 @@ func (group *RouterGroup) Group(prefix string) *RouterGroup {
 // use [RouterGroup.Use] method.
 func (group *RouterGroup) UseFunc(middlewareFuncs ...func(Handler) Handler) *RouterGroup {
 	for _, mdw := range middlewareFuncs {
-		group.Middlewares = append(group.Middlewares, &Middleware{Func: mdw})
+		group.Middlewares = append(group.Middlewares, &Middleware[Handler]{Func: mdw})
 	}
 
 	return group
 }
 
 // Use registers one or multiple middleware handlers to the current group.
-func (group *RouterGroup) Use(middlewares ...*Middleware) *RouterGroup {
+func (group *RouterGroup) Use(middlewares ...*Middleware[Handler]) *RouterGroup {
 	group.Middlewares = append(group.Middlewares, middlewares...)
 
 	return group

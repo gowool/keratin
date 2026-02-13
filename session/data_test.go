@@ -488,43 +488,43 @@ func TestTypeGetters(t *testing.T) {
 	tests := []struct {
 		name     string
 		key      string
-		expected interface{}
-		getter   func() interface{}
+		expected any
+		getter   func() any
 	}{
-		{"GetString", "stringKey", "hello", func() interface{} {
+		{"GetString", "stringKey", "hello", func() any {
 			return session.GetString(ctx, "stringKey")
 		}},
-		{"GetRune", "runeKey", rune('x'), func() interface{} {
+		{"GetRune", "runeKey", rune('x'), func() any {
 			return session.GetRune(ctx, "runeKey")
 		}},
-		{"GetBool", "boolKey", true, func() interface{} {
+		{"GetBool", "boolKey", true, func() any {
 			return session.GetBool(ctx, "boolKey")
 		}},
-		{"GetInt", "intKey", 42, func() interface{} {
+		{"GetInt", "intKey", 42, func() any {
 			return session.GetInt(ctx, "intKey")
 		}},
-		{"GetUInt", "uintKey", uint(42), func() interface{} {
+		{"GetUInt", "uintKey", uint(42), func() any {
 			return session.GetUInt(ctx, "uintKey")
 		}},
-		{"GetInt64", "int64Key", int64(42), func() interface{} {
+		{"GetInt64", "int64Key", int64(42), func() any {
 			return session.GetInt64(ctx, "int64Key")
 		}},
-		{"GetInt32", "int32Key", int32(42), func() interface{} {
+		{"GetInt32", "int32Key", int32(42), func() any {
 			return session.GetInt32(ctx, "int32Key")
 		}},
-		{"GetInt16", "int16Key", int16(42), func() interface{} {
+		{"GetInt16", "int16Key", int16(42), func() any {
 			return session.GetInt16(ctx, "int16Key")
 		}},
-		{"GetInt8", "int8Key", int8(42), func() interface{} {
+		{"GetInt8", "int8Key", int8(42), func() any {
 			return session.GetInt8(ctx, "int8Key")
 		}},
-		{"GetFloat64", "float64Key", 3.14, func() interface{} {
+		{"GetFloat64", "float64Key", 3.14, func() any {
 			return session.GetFloat64(ctx, "float64Key")
 		}},
-		{"GetFloat32", "float32Key", float32(3.14), func() interface{} {
+		{"GetFloat32", "float32Key", float32(3.14), func() any {
 			return session.GetFloat32(ctx, "float32Key")
 		}},
-		{"GetBytes", "bytesKey", []byte("test"), func() interface{} {
+		{"GetBytes", "bytesKey", []byte("test"), func() any {
 			return session.GetBytes(ctx, "bytesKey")
 		}},
 	}

@@ -64,8 +64,8 @@ type Router struct {
 	resPool         sync.Pool
 	ipExtractor     IPExtractor
 	errorHandler    ErrorHandlerFunc
-	PreMiddlewares  Middlewares
-	HTTPMiddlewares HTTPMiddlewares
+	PreMiddlewares  Middlewares[Handler]
+	HTTPMiddlewares Middlewares[http.Handler]
 }
 
 func NewRouter(options ...Option) *Router {
@@ -97,12 +97,12 @@ func (r *Router) Patterns() iter.Seq[string] {
 // PreHTTPFunc registers one or multiple HTTP middleware to be executed before all middlewares.
 func (r *Router) PreHTTPFunc(middlewareFuncs ...func(next http.Handler) http.Handler) {
 	for _, mdw := range middlewareFuncs {
-		r.HTTPMiddlewares = append(r.HTTPMiddlewares, &HTTPMiddleware{Func: mdw})
+		r.HTTPMiddlewares = append(r.HTTPMiddlewares, &Middleware[http.Handler]{Func: mdw})
 	}
 }
 
 // PreHTTP registers one or multiple HTTP middleware to be executed before all middlewares.
-func (r *Router) PreHTTP(middlewares ...*HTTPMiddleware) {
+func (r *Router) PreHTTP(middlewares ...*Middleware[http.Handler]) {
 	r.HTTPMiddlewares = append(r.HTTPMiddlewares, middlewares...)
 }
 
@@ -116,13 +116,13 @@ func (r *Router) PreHTTP(middlewares ...*HTTPMiddleware) {
 // use [Router.Pre] method.
 func (r *Router) PreFunc(middlewareFuncs ...func(Handler) Handler) {
 	for _, mdw := range middlewareFuncs {
-		r.PreMiddlewares = append(r.PreMiddlewares, &Middleware{Func: mdw})
+		r.PreMiddlewares = append(r.PreMiddlewares, &Middleware[Handler]{Func: mdw})
 	}
 }
 
 // Pre registers one or multiple middleware handlers which are run before router
 // tries to find matching route.
-func (r *Router) Pre(middlewares ...*Middleware) {
+func (r *Router) Pre(middlewares ...*Middleware[Handler]) {
 	r.PreMiddlewares = append(r.PreMiddlewares, middlewares...)
 }
 
@@ -164,7 +164,7 @@ func (r *Router) build(mux *http.ServeMux, group *RouterGroup, parents []*Router
 		case *Route:
 			var (
 				pattern     string
-				middlewares Middlewares
+				middlewares Middlewares[Handler]
 			)
 
 			// add parent groups Middlewares
@@ -237,6 +237,7 @@ func (r *Router) requestInterceptor(req *http.Request) (*http.Request, func()) {
 		r.ctxPool.Put(c)
 	}
 
+	c.scheme = Scheme(req)
 	c.realIP = r.ipExtractor(req)
 
 	ctx := context.WithValue(req.Context(), ctxKey{}, c)

@@ -86,13 +86,13 @@ func TestRouterGroup_Group_Nesting(t *testing.T) {
 func TestRouterGroup_UseFunc(t *testing.T) {
 	tests := []struct {
 		name               string
-		initialMiddlewares Middlewares
+		initialMiddlewares Middlewares[Handler]
 		middlewareFuncs    []func(Handler) Handler
 		expectedCount      int
 	}{
 		{
 			name:               "adds single middleware",
-			initialMiddlewares: Middlewares{},
+			initialMiddlewares: Middlewares[Handler]{},
 			middlewareFuncs: []func(Handler) Handler{
 				func(h Handler) Handler {
 					return HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
@@ -103,8 +103,8 @@ func TestRouterGroup_UseFunc(t *testing.T) {
 			expectedCount: 1,
 		},
 		{
-			name:               "adds multiple Middlewares",
-			initialMiddlewares: Middlewares{},
+			name:               "adds multiple Middlewares[Handler]",
+			initialMiddlewares: Middlewares[Handler]{},
 			middlewareFuncs: []func(Handler) Handler{
 				func(h Handler) Handler {
 					return HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
@@ -125,9 +125,9 @@ func TestRouterGroup_UseFunc(t *testing.T) {
 			expectedCount: 3,
 		},
 		{
-			name: "appends to existing Middlewares",
-			initialMiddlewares: Middlewares{
-				&Middleware{
+			name: "appends to existing Middlewares[Handler]",
+			initialMiddlewares: Middlewares[Handler]{
+				&Middleware[Handler]{
 					ID:       "existing",
 					Priority: 0,
 					Func: func(h Handler) Handler {
@@ -148,7 +148,7 @@ func TestRouterGroup_UseFunc(t *testing.T) {
 		},
 		{
 			name:               "empty middleware funcs list",
-			initialMiddlewares: Middlewares{},
+			initialMiddlewares: Middlewares[Handler]{},
 			middlewareFuncs:    []func(Handler) Handler{},
 			expectedCount:      0,
 		},
@@ -193,14 +193,14 @@ func TestRouterGroup_UseFunc_Chaining(t *testing.T) {
 func TestRouterGroup_Use(t *testing.T) {
 	tests := []struct {
 		name               string
-		initialMiddlewares Middlewares
-		middlewares        []*Middleware
+		initialMiddlewares Middlewares[Handler]
+		middlewares        []*Middleware[Handler]
 		expectedCount      int
 	}{
 		{
 			name:               "adds single middleware",
-			initialMiddlewares: Middlewares{},
-			middlewares: []*Middleware{
+			initialMiddlewares: Middlewares[Handler]{},
+			middlewares: []*Middleware[Handler]{
 				{
 					ID:       "middleware-1",
 					Priority: 0,
@@ -215,8 +215,8 @@ func TestRouterGroup_Use(t *testing.T) {
 		},
 		{
 			name:               "adds multiple middlewares",
-			initialMiddlewares: Middlewares{},
-			middlewares: []*Middleware{
+			initialMiddlewares: Middlewares[Handler]{},
+			middlewares: []*Middleware[Handler]{
 				{
 					ID:       "mw-1",
 					Priority: 10,
@@ -240,8 +240,8 @@ func TestRouterGroup_Use(t *testing.T) {
 		},
 		{
 			name: "appends to existing middlewares",
-			initialMiddlewares: Middlewares{
-				&Middleware{
+			initialMiddlewares: Middlewares[Handler]{
+				&Middleware[Handler]{
 					ID:       "existing",
 					Priority: 0,
 					Func: func(h Handler) Handler {
@@ -251,7 +251,7 @@ func TestRouterGroup_Use(t *testing.T) {
 					},
 				},
 			},
-			middlewares: []*Middleware{
+			middlewares: []*Middleware[Handler]{
 				{
 					ID:       "new",
 					Priority: 1,
@@ -266,8 +266,8 @@ func TestRouterGroup_Use(t *testing.T) {
 		},
 		{
 			name:               "empty middlewares list",
-			initialMiddlewares: Middlewares{},
-			middlewares:        []*Middleware{},
+			initialMiddlewares: Middlewares[Handler]{},
+			middlewares:        []*Middleware[Handler]{},
 			expectedCount:      0,
 		},
 	}
@@ -291,7 +291,7 @@ func TestRouterGroup_Use_Chaining(t *testing.T) {
 	group := &RouterGroup{}
 
 	result := group.Use(
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "mw-1",
 			Priority: 10,
 			Func: func(h Handler) Handler {
@@ -301,7 +301,7 @@ func TestRouterGroup_Use_Chaining(t *testing.T) {
 			},
 		},
 	).Use(
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "mw-2",
 			Priority: 5,
 			Func: func(h Handler) Handler {
@@ -320,7 +320,7 @@ func TestRouterGroup_Use_UseFunc_Mixed(t *testing.T) {
 	group := &RouterGroup{}
 
 	group.Use(
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "named-1",
 			Priority: 10,
 			Func: func(h Handler) Handler {
@@ -334,7 +334,7 @@ func TestRouterGroup_Use_UseFunc_Mixed(t *testing.T) {
 			return h.ServeHTTP(w, r)
 		})
 	}).Use(
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "named-2",
 			Priority: 5,
 			Func: func(h Handler) Handler {
@@ -631,7 +631,7 @@ func TestRouterGroup_ComplexHierarchy(t *testing.T) {
 	})
 
 	v1 := api.Group("/v1").Use(
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "v1-auth",
 			Priority: 10,
 			Func: func(h Handler) Handler {
@@ -678,7 +678,7 @@ func TestRouterGroup_RouteWithMiddleware(t *testing.T) {
 			return h.ServeHTTP(w, r)
 		})
 	}).Use(
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "route-mw",
 			Priority: 5,
 			Func: func(h Handler) Handler {
@@ -783,7 +783,7 @@ func TestRouterGroup_Use_NamedMiddlewares(t *testing.T) {
 	group := &RouterGroup{}
 
 	group.Use(
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "auth",
 			Priority: 10,
 			Func: func(h Handler) Handler {
@@ -792,7 +792,7 @@ func TestRouterGroup_Use_NamedMiddlewares(t *testing.T) {
 				})
 			},
 		},
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "logger",
 			Priority: 5,
 			Func: func(h Handler) Handler {

@@ -127,11 +127,11 @@ func TestMap_DifferentTypes(t *testing.T) {
 		values := []int{1, 2, 3}
 
 		// Map to interface slice
-		interfaces := Map(values, func(n int) interface{} {
+		interfaces := Map(values, func(n int) any {
 			return fmt.Sprintf("number-%d", n)
 		})
 
-		expected := []interface{}{"number-1", "number-2", "number-3"}
+		expected := []any{"number-1", "number-2", "number-3"}
 		assert.Equal(t, expected, interfaces)
 	})
 
@@ -366,7 +366,7 @@ func TestCopy_DifferentTypes(t *testing.T) {
 	})
 
 	t.Run("interfaces", func(t *testing.T) {
-		input := []interface{}{
+		input := []any{
 			"string",
 			42,
 			3.14,

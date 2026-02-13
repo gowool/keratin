@@ -102,7 +102,7 @@ func RequestLogger(cfg RequestLoggerConfig, skippers ...Skipper) func(keratin.Ha
 
 func RequestLoggerAttrs() RequestLoggerAttrsFunc {
 	return func(w http.ResponseWriter, r *http.Request, metadata RequestMetadata) []slog.Attr {
-		size := 13
+		size := 14
 
 		id := r.Header.Get(keratin.HeaderXRequestID)
 		if id == "" {
@@ -131,18 +131,21 @@ func RequestLoggerAttrs() RequestLoggerAttrsFunc {
 			size++
 		}
 
+		c := keratin.FromContext(r.Context())
+
 		attrs := make([]slog.Attr, 0, size)
 		attrs = append(attrs,
 			slog.String("latency", metadata.EndTime.Sub(metadata.StartTime).String()),
 			slog.String("method", r.Method),
 			slog.Int("status_code", metadata.StatusCode),
 			slog.String("protocol", r.Proto),
+			slog.String("scheme", c.Scheme()),
 			slog.String("host", r.Host),
 			slog.String("path", r.URL.Path),
 			slog.String("uri", r.RequestURI),
 			slog.String("pattern", r.Pattern),
 			slog.String("remote_addr", r.RemoteAddr),
-			slog.String("real_ip", keratin.FromContext(r.Context()).RealIP()),
+			slog.String("real_ip", c.RealIP()),
 			slog.String("user_agent", r.UserAgent()),
 			slog.Time("start_time", metadata.StartTime),
 			slog.Time("end_time", metadata.EndTime),

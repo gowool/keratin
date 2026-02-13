@@ -210,12 +210,12 @@ func TestRouter_PreFunc(t *testing.T) {
 func TestRouter_Pre(t *testing.T) {
 	tests := []struct {
 		name          string
-		middlewares   []*Middleware
+		middlewares   []*Middleware[Handler]
 		expectedCount int
 	}{
 		{
 			name: "adds single middleware",
-			middlewares: []*Middleware{
+			middlewares: []*Middleware[Handler]{
 				{
 					ID:       "middleware-1",
 					Priority: 0,
@@ -231,7 +231,7 @@ func TestRouter_Pre(t *testing.T) {
 		},
 		{
 			name: "adds multiple Middlewares with different priorities",
-			middlewares: []*Middleware{
+			middlewares: []*Middleware[Handler]{
 				{
 					ID:       "priority-10",
 					Priority: 10,
@@ -267,12 +267,12 @@ func TestRouter_Pre(t *testing.T) {
 		},
 		{
 			name:          "empty Middlewares list",
-			middlewares:   []*Middleware{},
+			middlewares:   []*Middleware[Handler]{},
 			expectedCount: 0,
 		},
 		{
 			name: "Middlewares with nil funcs",
-			middlewares: []*Middleware{
+			middlewares: []*Middleware[Handler]{
 				{
 					ID:       "nil-func",
 					Priority: 0,
@@ -308,7 +308,7 @@ func TestRouter_PreAndPreFunc_Combined(t *testing.T) {
 		})
 	})
 
-	router.Pre(&Middleware{
+	router.Pre(&Middleware[Handler]{
 		ID:       "named-middleware",
 		Priority: 5,
 		Func: func(h Handler) Handler {
@@ -1026,7 +1026,7 @@ func TestRouter_PriorityMiddlewareOrder(t *testing.T) {
 	}))
 
 	router.Pre(
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "priority-10",
 			Priority: 10,
 			Func: func(h Handler) Handler {
@@ -1036,7 +1036,7 @@ func TestRouter_PriorityMiddlewareOrder(t *testing.T) {
 				})
 			},
 		},
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "priority-5",
 			Priority: 5,
 			Func: func(h Handler) Handler {
@@ -1046,7 +1046,7 @@ func TestRouter_PriorityMiddlewareOrder(t *testing.T) {
 				})
 			},
 		},
-		&Middleware{
+		&Middleware[Handler]{
 			ID:       "priority-0",
 			Priority: 0,
 			Func: func(h Handler) Handler {
@@ -1253,12 +1253,12 @@ func TestRouter_PreHTTPFunc(t *testing.T) {
 func TestRouter_PreHTTP(t *testing.T) {
 	tests := []struct {
 		name          string
-		middlewares   []*HTTPMiddleware
+		middlewares   []*Middleware[http.Handler]
 		expectedCount int
 	}{
 		{
 			name: "adds single HTTP middleware",
-			middlewares: []*HTTPMiddleware{
+			middlewares: []*Middleware[http.Handler]{
 				{
 					ID:       "http-middleware-1",
 					Priority: 0,
@@ -1274,7 +1274,7 @@ func TestRouter_PreHTTP(t *testing.T) {
 		},
 		{
 			name: "adds multiple HTTP Middlewares with different priorities",
-			middlewares: []*HTTPMiddleware{
+			middlewares: []*Middleware[http.Handler]{
 				{
 					ID:       "priority-10",
 					Priority: 10,
@@ -1299,13 +1299,13 @@ func TestRouter_PreHTTP(t *testing.T) {
 			expectedCount: 2,
 		},
 		{
-			name:          "empty HTTPMiddlewares list",
-			middlewares:   []*HTTPMiddleware{},
+			name:          "empty Middleware[http.Handler]s list",
+			middlewares:   []*Middleware[http.Handler]{},
 			expectedCount: 0,
 		},
 		{
-			name: "HTTPMiddlewares with nil funcs",
-			middlewares: []*HTTPMiddleware{
+			name: "Middleware[http.Handler]s with nil funcs",
+			middlewares: []*Middleware[http.Handler]{
 				{
 					ID:       "nil-func",
 					Priority: 0,
@@ -1337,7 +1337,7 @@ func TestRouter_PreHTTPAndPreHTTPFunc_Combined(t *testing.T) {
 		})
 	})
 
-	router.PreHTTP(&HTTPMiddleware{
+	router.PreHTTP(&Middleware[http.Handler]{
 		ID:       "named-http-middleware",
 		Priority: 5,
 		Func: func(h http.Handler) http.Handler {
@@ -1399,7 +1399,7 @@ func TestRouter_HTTPMiddlewareExecution(t *testing.T) {
 					})
 				})
 
-				r.PreHTTP(&HTTPMiddleware{
+				r.PreHTTP(&Middleware[http.Handler]{
 					ID:       "http-mw-2",
 					Priority: 5,
 					Func: func(h http.Handler) http.Handler {
@@ -1425,7 +1425,7 @@ func TestRouter_HTTPMiddlewareExecution(t *testing.T) {
 		{
 			name: "HTTP middleware can short-circuit",
 			setupRouter: func(r *Router) {
-				r.PreHTTP(&HTTPMiddleware{
+				r.PreHTTP(&Middleware[http.Handler]{
 					ID:       "short-circuit",
 					Priority: 0,
 					Func: func(h http.Handler) http.Handler {
@@ -1448,7 +1448,7 @@ func TestRouter_HTTPMiddlewareExecution(t *testing.T) {
 		{
 			name: "HTTP middleware handles handler errors",
 			setupRouter: func(r *Router) {
-				r.PreHTTP(&HTTPMiddleware{
+				r.PreHTTP(&Middleware[http.Handler]{
 					ID:       "error-recovery",
 					Priority: 0,
 					Func: func(h http.Handler) http.Handler {

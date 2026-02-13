@@ -116,7 +116,7 @@ func TestMarshalJSONv2(t *testing.T) {
 			outputStr := buf.String()
 
 			// Parse the output and compare with the original input
-			var parsedOutput interface{}
+			var parsedOutput any
 			err = json.Unmarshal([]byte(outputStr), &parsedOutput)
 			require.NoError(t, err, "Output should be valid JSON")
 
@@ -523,7 +523,7 @@ func TestRoundTripv2(t *testing.T) {
 			err := MarshalJSON(&buf, tt.input, tt.indent)
 			require.NoError(t, err)
 
-			// Unmarshal back to interface{}
+			// Unmarshal back to any
 			var result any
 			reader := bytes.NewReader(buf.Bytes())
 			err = UnmarshalJSON(reader, &result)

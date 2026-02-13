@@ -54,7 +54,7 @@ func TestRecoverConfig_SetDefaults(t *testing.T) {
 func TestRecover_PanicRecovery(t *testing.T) {
 	tests := []struct {
 		name       string
-		panicValue interface{}
+		panicValue any
 	}{
 		{
 			name:       "recovers from string panic",
@@ -314,7 +314,7 @@ func TestRecover_RealWorldScenarios(t *testing.T) {
 
 	t.Run("handles type assertion failure", func(t *testing.T) {
 		handler := keratin.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
-			var i interface{} = "string"
+			var i any = "string"
 			_ = i.(int)
 			return nil
 		})
@@ -596,7 +596,7 @@ func TestRecover_LongPanicMessage(t *testing.T) {
 func TestHTTPRecover_PanicRecovery(t *testing.T) {
 	tests := []struct {
 		name       string
-		panicValue interface{}
+		panicValue any
 	}{
 		{
 			name:       "recovers from string panic",
@@ -894,7 +894,7 @@ func TestHTTPRecover_RealWorldScenarios(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(&logBuffer, nil))
 
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			var i interface{} = "string"
+			var i any = "string"
 			_ = i.(int)
 		})
 

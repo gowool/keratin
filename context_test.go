@@ -99,6 +99,7 @@ func TestKContext_reset(t *testing.T) {
 		{
 			name: "reset populated context",
 			input: &kContext{
+				scheme:     "https",
 				realIP:     "192.168.1.1",
 				pattern:    "/users/:id",
 				methods:    "GET,POST",
@@ -106,6 +107,7 @@ func TestKContext_reset(t *testing.T) {
 				err:        nil,
 			},
 			want: &kContext{
+				scheme:     "",
 				realIP:     "",
 				pattern:    "",
 				methods:    "",
@@ -117,6 +119,7 @@ func TestKContext_reset(t *testing.T) {
 			name:  "reset empty context",
 			input: &kContext{},
 			want: &kContext{
+				scheme:     "",
 				realIP:     "",
 				pattern:    "",
 				methods:    "",
@@ -127,12 +130,14 @@ func TestKContext_reset(t *testing.T) {
 		{
 			name: "reset with error",
 			input: &kContext{
+				scheme:  "https",
 				realIP:  "10.0.0.1",
 				pattern: "/",
 				methods: "GET",
 				err:     context.Canceled,
 			},
 			want: &kContext{
+				scheme:     "",
 				realIP:     "",
 				pattern:    "",
 				methods:    "",
@@ -209,12 +214,14 @@ func TestKContext_ImplementsContext(t *testing.T) {
 
 func TestKContext_FullCycle(t *testing.T) {
 	ctx := &kContext{
+		scheme:     "https",
 		realIP:     "2001:0db8:0000:0000:0000:0000:0000:0001",
 		pattern:    "/api/v1/resources/:id",
 		methods:    "GET,POST,PUT,PATCH,DELETE",
 		anyMethods: false,
 	}
 
+	require.Equal(t, "https", ctx.Scheme())
 	require.Equal(t, "2001:0db8:0000:0000:0000:0000:0000:0001", ctx.RealIP())
 	require.Equal(t, "/api/v1/resources/:id", ctx.Pattern())
 	require.Equal(t, "GET,POST,PUT,PATCH,DELETE", ctx.Methods())
@@ -222,6 +229,7 @@ func TestKContext_FullCycle(t *testing.T) {
 
 	ctx.reset()
 
+	require.Equal(t, "", ctx.Scheme())
 	require.Equal(t, "", ctx.RealIP())
 	require.Equal(t, "", ctx.Pattern())
 	require.Equal(t, "", ctx.Methods())
@@ -231,31 +239,37 @@ func TestKContext_FullCycle(t *testing.T) {
 func TestNilKCtx(t *testing.T) {
 	tests := []struct {
 		name       string
-		method     func() interface{}
+		method     func() any
 		wantNil    bool
 		wantString string
 	}{
 		{
 			name:       "RealIP returns empty string",
-			method:     func() interface{} { return nilKCtx.RealIP() },
+			method:     func() any { return nilKCtx.RealIP() },
 			wantNil:    false,
 			wantString: "",
 		},
 		{
 			name:       "Pattern returns empty string",
-			method:     func() interface{} { return nilKCtx.Pattern() },
+			method:     func() any { return nilKCtx.Pattern() },
 			wantNil:    false,
 			wantString: "",
 		},
 		{
 			name:       "Methods returns empty string",
-			method:     func() interface{} { return nilKCtx.Methods() },
+			method:     func() any { return nilKCtx.Methods() },
 			wantNil:    false,
 			wantString: "",
 		},
 		{
 			name:       "AnyMethods returns false",
-			method:     func() interface{} { return nilKCtx.AnyMethods() },
+			method:     func() any { return nilKCtx.AnyMethods() },
+			wantNil:    false,
+			wantString: "",
+		},
+		{
+			name:       "Scheme returns empty string",
+			method:     func() any { return nilKCtx.Scheme() },
 			wantNil:    false,
 			wantString: "",
 		},
@@ -291,6 +305,7 @@ func TestKContext_ContextKeyUniqueness(t *testing.T) {
 
 func TestKContext_WithAllFields(t *testing.T) {
 	ctx := &kContext{
+		scheme:     "https",
 		realIP:     "203.0.113.1",
 		pattern:    "/api/v2/organizations/:org/users/:user",
 		methods:    "GET,HEAD,OPTIONS",
@@ -298,6 +313,7 @@ func TestKContext_WithAllFields(t *testing.T) {
 		err:        context.DeadlineExceeded,
 	}
 
+	require.Equal(t, "https", ctx.Scheme())
 	require.Equal(t, "203.0.113.1", ctx.RealIP())
 	require.Equal(t, "/api/v2/organizations/:org/users/:user", ctx.Pattern())
 	require.Equal(t, "GET,HEAD,OPTIONS", ctx.Methods())

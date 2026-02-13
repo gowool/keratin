@@ -5,6 +5,7 @@ import "context"
 var nilKCtx = new(kContext)
 
 type Context interface {
+	Scheme() string
 	RealIP() string
 	Pattern() string
 	Methods() string
@@ -21,6 +22,7 @@ func FromContext(ctx context.Context) Context {
 type ctxKey struct{}
 
 type kContext struct {
+	scheme     string
 	realIP     string
 	pattern    string
 	methods    string
@@ -29,11 +31,16 @@ type kContext struct {
 }
 
 func (c *kContext) reset() {
+	c.scheme = ""
 	c.realIP = ""
 	c.pattern = ""
 	c.methods = ""
 	c.anyMethods = false
 	c.err = nil
+}
+
+func (c *kContext) Scheme() string {
+	return c.scheme
 }
 
 func (c *kContext) RealIP() string {
