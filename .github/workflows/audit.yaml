@@ -52,10 +52,14 @@ jobs:
         run: go test -race -v -coverprofile=../server.txt --covermode=atomic ./...
         working-directory: ./server
 
+      - name: Run rate limit tests
+        run: go test -race -v -coverprofile=../ratelimit.txt --covermode=atomic ./...
+        working-directory: ./ratelimit
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
           verbose: true
-          files: ./keratin.txt,./adapter.txt,./session.txt,./server.txt
+          files: ./keratin.txt,./adapter.txt,./session.txt,./server.txt,./ratelimit.txt
