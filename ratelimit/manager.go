@@ -9,7 +9,7 @@ import (
 
 const redactedKey = "[redacted]"
 
-//go:generate go tool msgp -o=manager_msgp.go -unexported
+//go:generate go tool msgp -o=manager_item_msgp.go -unexported
 type item struct {
 	currHits int
 	prevHits int
