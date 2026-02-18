@@ -635,7 +635,7 @@ func TestExtractorLimit(t *testing.T) {
 			require.Len(t, extractors, 1)
 
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
-			for i := 0; i < 25; i++ {
+			for i := range 25 {
 				req.Header.Add("X", "value"+string(rune('1'+i)))
 			}
 

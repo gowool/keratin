@@ -531,7 +531,7 @@ func TestRecover_ConcurrentPanics(t *testing.T) {
 
 		errChan := make(chan error, 10)
 
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			go func() {
 				req := httptest.NewRequest(http.MethodGet, "/", nil)
 				rec := httptest.NewRecorder()
@@ -539,7 +539,7 @@ func TestRecover_ConcurrentPanics(t *testing.T) {
 			}()
 		}
 
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			err := <-errChan
 			require.Error(t, err)
 			httpErr, ok := err.(*keratin.HTTPError)
@@ -1033,7 +1033,7 @@ func TestHTTPRecover_ConcurrentPanics(t *testing.T) {
 
 		errChan := make(chan int, 10)
 
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			go func() {
 				req := httptest.NewRequest(http.MethodGet, "/", nil)
 				rec := httptest.NewRecorder()
@@ -1042,7 +1042,7 @@ func TestHTTPRecover_ConcurrentPanics(t *testing.T) {
 			}()
 		}
 
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			code := <-errChan
 			assert.Equal(t, http.StatusInternalServerError, code)
 		}

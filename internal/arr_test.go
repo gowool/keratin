@@ -160,7 +160,7 @@ func TestMap_EdgeCases(t *testing.T) {
 		// Create a large slice
 		size := 10000
 		input := make([]int, size)
-		for i := 0; i < size; i++ {
+		for i := range size {
 			input[i] = i
 		}
 
@@ -417,7 +417,7 @@ func TestCopy_Behavior(t *testing.T) {
 
 	t.Run("capacity preservation", func(t *testing.T) {
 		original := make([]int, 3, 10) // len=3, cap=10
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			original[i] = i + 1
 		}
 
@@ -433,7 +433,7 @@ func TestCopy_Behavior(t *testing.T) {
 		// Create a large slice
 		size := 100000
 		original := make([]int, size)
-		for i := 0; i < size; i++ {
+		for i := range size {
 			original[i] = i
 		}
 
@@ -451,7 +451,7 @@ func TestCopy_Behavior(t *testing.T) {
 // Benchmark tests
 func BenchmarkMap(b *testing.B) {
 	input := make([]int, 1000)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		input[i] = i
 	}
 
@@ -463,7 +463,7 @@ func BenchmarkMap(b *testing.B) {
 
 func BenchmarkCopy(b *testing.B) {
 	input := make([]int, 1000)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		input[i] = i
 	}
 
@@ -481,7 +481,7 @@ func TestConcurrentUsage(t *testing.T) {
 		// Run multiple Map operations concurrently
 		done := make(chan bool, 10)
 
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			go func(id int) {
 				result := Map(input, func(x int) int { return x * id })
 				assert.Len(t, result, len(input))
@@ -490,7 +490,7 @@ func TestConcurrentUsage(t *testing.T) {
 		}
 
 		// Wait for all goroutines
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			<-done
 		}
 	})
@@ -501,7 +501,7 @@ func TestConcurrentUsage(t *testing.T) {
 		// Run multiple Copy operations concurrently
 		done := make(chan bool, 10)
 
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			go func() {
 				result := Copy(input)
 				assert.Equal(t, input, result)
@@ -513,7 +513,7 @@ func TestConcurrentUsage(t *testing.T) {
 		}
 
 		// Wait for all goroutines
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			<-done
 		}
 	})

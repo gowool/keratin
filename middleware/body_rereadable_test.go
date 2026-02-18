@@ -23,7 +23,7 @@ func Test_BodyRereadable_MultipleReads(t *testing.T) {
 	}
 
 	// Read multiple times
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		result, err := io.ReadAll(rereadable)
 		require.NoError(t, err, "Read %d should succeed", i)
 		require.Equal(t, content, string(result), "Read %d should return original content", i)
@@ -83,7 +83,7 @@ func Test_RereadableReadCloser(t *testing.T) {
 	}
 
 	// read multiple times
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		result, err := io.ReadAll(rereadable)
 		if err != nil {
 			t.Fatalf("[read:%d] %v", i, err)
@@ -458,15 +458,13 @@ func TestBodyRereadable_Middleware(t *testing.T) {
 		wrapped := middleware(handler)
 
 		var wg sync.WaitGroup
-		for i := 0; i < 10; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range 10 {
+			wg.Go(func() {
 				req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("content"))
 				rec := httptest.NewRecorder()
 				err := wrapped.ServeHTTP(rec, req)
 				assert.NoError(t, err)
-			}()
+			})
 		}
 		wg.Wait()
 	})

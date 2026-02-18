@@ -48,7 +48,7 @@ func ParseAcceptLanguage(acceptLanguageHeader string) []string {
 	l := len(options)
 	languages := make([]string, l)
 
-	for i := 0; i < l; i++ {
+	for i := range l {
 		locale := strings.SplitN(options[i], ";", 2)
 		languages[i] = strings.Trim(locale[0], " ")
 	}

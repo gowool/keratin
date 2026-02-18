@@ -115,7 +115,7 @@ func TestInterceptors_Apply(t *testing.T) {
 			name: "large number of interceptors",
 			interceptors: func() Interceptors[int] {
 				interceptors := make(Interceptors[int], 100)
-				for i := 0; i < 100; i++ {
+				for i := range 100 {
 					interceptors[i] = func(n int) (int, func()) {
 						return n + 1, func() {}
 					}
