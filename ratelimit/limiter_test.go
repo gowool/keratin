@@ -140,7 +140,7 @@ func TestLimiter_Allow_MultipleRequests(t *testing.T) {
 
 		expectedRemaining := []string{"4", "3", "2", "1", "0"}
 
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			w := httptest.NewRecorder()
 			err := limiter.Allow(w, req)
 			assert.NoError(t, err)
@@ -162,7 +162,7 @@ func TestLimiter_Allow_ExceedsLimit(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.RemoteAddr = "127.0.0.1:12345"
 
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			w := httptest.NewRecorder()
 			err := limiter.Allow(w, req)
 			assert.NoError(t, err)
@@ -188,7 +188,7 @@ func TestLimiter_Allow_ExceedsLimit(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.RemoteAddr = "127.0.0.1:12345"
 
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			w := httptest.NewRecorder()
 			_ = limiter.Allow(w, req)
 		}
@@ -218,13 +218,13 @@ func TestLimiter_Allow_DifferentKeys(t *testing.T) {
 		req2 := httptest.NewRequest(http.MethodGet, "/", nil)
 		req2.RemoteAddr = "127.0.0.1:22222"
 
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			w := httptest.NewRecorder()
 			err := limiter.Allow(w, req1)
 			assert.NoError(t, err)
 		}
 
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			w := httptest.NewRecorder()
 			err := limiter.Allow(w, req2)
 			assert.NoError(t, err)
@@ -255,7 +255,7 @@ func TestLimiter_Allow_Expiration(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.RemoteAddr = "127.0.0.1:12345"
 
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			w := httptest.NewRecorder()
 			_ = limiter.Allow(w, req)
 		}
@@ -282,7 +282,7 @@ func TestLimiter_Allow_SlidingWindow(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.RemoteAddr = "127.0.0.1:12345"
 
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			w := httptest.NewRecorder()
 			err := limiter.Allow(w, req)
 			assert.NoError(t, err)
@@ -319,7 +319,7 @@ func TestLimiter_Allow_DynamicMax(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.RemoteAddr = "127.0.0.1:12345"
 
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			w := httptest.NewRecorder()
 			_ = limiter.Allow(w, req)
 		}
@@ -330,7 +330,7 @@ func TestLimiter_Allow_DynamicMax(t *testing.T) {
 		assert.Equal(t, ErrRateLimitExceeded, err)
 
 		req.Header.Set("X-Premium", "true")
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			w = httptest.NewRecorder()
 			_ = limiter.Allow(w, req)
 		}
@@ -360,7 +360,7 @@ func TestLimiter_Allow_DynamicExpiration(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.RemoteAddr = "127.0.0.1:12345"
 
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			w := httptest.NewRecorder()
 			_ = limiter.Allow(w, req)
 		}
@@ -394,7 +394,7 @@ func TestLimiter_Allow_CustomIdentifierExtractor(t *testing.T) {
 		req.RemoteAddr = "127.0.0.1:12345"
 		req.Header.Set("X-API-Key", "key-123")
 
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			w := httptest.NewRecorder()
 			err := limiter.Allow(w, req)
 			assert.NoError(t, err)
@@ -495,17 +495,15 @@ func TestLimiter_Allow_ConcurrentRequests(t *testing.T) {
 		var wg sync.WaitGroup
 		errChan := make(chan error, 200)
 
-		for i := 0; i < 100; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range 100 {
+			wg.Go(func() {
 				req := httptest.NewRequest(http.MethodGet, "/", nil)
 				req.RemoteAddr = "127.0.0.1:12345"
 				w := httptest.NewRecorder()
 
 				err := limiter.Allow(w, req)
 				errChan <- err
-			}()
+			})
 		}
 
 		wg.Wait()
@@ -718,7 +716,7 @@ func TestLimiter_Allow_Scenarios(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.RemoteAddr = "127.0.0.1:12345"
 
-		for i := 0; i < 50; i++ {
+		for i := range 50 {
 			w := httptest.NewRecorder()
 			err := limiter.Allow(w, req)
 			assert.NoError(t, err)
@@ -739,7 +737,7 @@ func TestLimiter_Allow_Scenarios(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.RemoteAddr = "127.0.0.1:12345"
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			w := httptest.NewRecorder()
 			err := limiter.Allow(w, req)
 			assert.NoError(t, err)

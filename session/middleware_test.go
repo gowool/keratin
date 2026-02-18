@@ -150,7 +150,7 @@ func TestMiddleware(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		}))
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			rec := httptest.NewRecorder()
 			wrapped.ServeHTTP(rec, req)

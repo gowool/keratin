@@ -145,7 +145,7 @@ func TestMiddleware(t *testing.T) {
 		req.RemoteAddr = "127.0.0.1:12345"
 		req.Header.Set("X-Skip-RateLimit", "true")
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			w := httptest.NewRecorder()
 			mw(handler).ServeHTTP(w, req)
 			assert.Equal(t, http.StatusOK, w.Code)
@@ -177,7 +177,7 @@ func TestMiddleware(t *testing.T) {
 		req1.RemoteAddr = "127.0.0.1:11111"
 		req1.Header.Set("X-Skip-1", "true")
 
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			w := httptest.NewRecorder()
 			mw(handler).ServeHTTP(w, req1)
 			assert.Equal(t, http.StatusOK, w.Code)
@@ -187,7 +187,7 @@ func TestMiddleware(t *testing.T) {
 		req2.RemoteAddr = "127.0.0.1:22222"
 		req2.Header.Set("X-Skip-2", "true")
 
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			w := httptest.NewRecorder()
 			mw(handler).ServeHTTP(w, req2)
 			assert.Equal(t, http.StatusOK, w.Code)
@@ -239,7 +239,7 @@ func TestMiddleware(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
 		req.RemoteAddr = "192.168.1.100:8080"
 
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			w := httptest.NewRecorder()
 			mw(handler).ServeHTTP(w, req)
 			assert.Equal(t, http.StatusOK, w.Code)

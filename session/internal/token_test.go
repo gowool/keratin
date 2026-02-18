@@ -37,7 +37,7 @@ func TestToken(t *testing.T) {
 		tokens := make(map[string]bool)
 		const numTokens = 100
 
-		for i := 0; i < numTokens; i++ {
+		for range numTokens {
 			token, err := Token()
 			require.NoError(t, err)
 			assert.False(t, tokens[token], "token %q should be unique", token)

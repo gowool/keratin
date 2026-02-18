@@ -143,10 +143,10 @@ func Test_MemoryStorage(t *testing.T) {
 
 		// Concurrent writes
 		done := make(chan bool, 20)
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			go func(id int) {
 				testKey := fmt.Sprintf("%s-%d", key, id)
-				testVal := []byte(fmt.Sprintf("value-%d", id))
+				testVal := fmt.Appendf(nil, "value-%d", id)
 				err := store.Set(context.Background(), testKey, testVal, 0)
 				require.NoError(t, err)
 				done <- true
@@ -154,15 +154,15 @@ func Test_MemoryStorage(t *testing.T) {
 		}
 
 		// Wait for all writes
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			<-done
 		}
 
 		// Concurrent reads
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			go func(id int) {
 				testKey := fmt.Sprintf("%s-%d", key, id)
-				testVal := []byte(fmt.Sprintf("value-%d", id))
+				testVal := fmt.Appendf(nil, "value-%d", id)
 				result, err := store.Get(context.Background(), testKey)
 				require.NoError(t, err)
 				require.Equal(t, testVal, result)
@@ -171,7 +171,7 @@ func Test_MemoryStorage(t *testing.T) {
 		}
 
 		// Wait for all reads
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			<-done
 		}
 	})
@@ -249,16 +249,16 @@ func Test_MemoryStorage(t *testing.T) {
 		go store.gc(50 * time.Millisecond)
 
 		// Add multiple expiring items
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			key := fmt.Sprintf("expiring-%d", i)
-			err := store.Set(t.Context(), key, []byte(fmt.Sprintf("value-%d", i)), 80*time.Millisecond)
+			err := store.Set(t.Context(), key, fmt.Appendf(nil, "value-%d", i), 80*time.Millisecond)
 			require.NoError(t, err)
 		}
 
 		// Add some permanent items
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			key := fmt.Sprintf("permanent-%d", i)
-			err := store.Set(t.Context(), key, []byte(fmt.Sprintf("value-%d", i)), 0)
+			err := store.Set(t.Context(), key, fmt.Appendf(nil, "value-%d", i), 0)
 			require.NoError(t, err)
 		}
 
@@ -266,11 +266,11 @@ func Test_MemoryStorage(t *testing.T) {
 		time.Sleep(300 * time.Millisecond)
 
 		// Permanent items should still be there
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			key := fmt.Sprintf("permanent-%d", i)
 			val, err := store.Get(t.Context(), key)
 			require.NoError(t, err)
-			require.Equal(t, []byte(fmt.Sprintf("value-%d", i)), val)
+			require.Equal(t, fmt.Appendf(nil, "value-%d", i), val)
 		}
 	})
 }

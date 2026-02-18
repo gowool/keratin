@@ -65,7 +65,7 @@ type Config struct {
 	HashTokenInStore bool `env:"HASH_TOKEN_IN_STORE" json:"hashTokenInStore,omitempty" yaml:"hashTokenInStore,omitempty"`
 
 	// Cookie contains the configuration settings for session cookies.
-	Cookie Cookie `envPrefix:"COOKIE_" json:"cookie,omitempty" yaml:"cookie,omitempty"`
+	Cookie Cookie `envPrefix:"COOKIE_" json:"cookie,omitzero" yaml:"cookie,omitempty"`
 }
 
 func (c *Config) SetDefaults() {

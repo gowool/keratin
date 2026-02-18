@@ -213,7 +213,7 @@ func TestGobCodec_EncodeDecodeConsistency(t *testing.T) {
 
 	// Encode the same data multiple times
 	var encodings [][]byte
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		encoded, err := codec.Encode(deadline, values)
 		require.NoError(t, err)
 		encodings = append(encodings, encoded)
@@ -355,9 +355,9 @@ func TestGobCodec_ConcurrentAccess(t *testing.T) {
 	errChan := make(chan error, numGoroutines*2)
 
 	// Concurrent encoding
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(id int) {
-			for j := 0; j < numIterations; j++ {
+			for j := range numIterations {
 				values := map[string]any{
 					"goroutine": id,
 					"iteration": j,
@@ -379,9 +379,9 @@ func TestGobCodec_ConcurrentAccess(t *testing.T) {
 	encoded, err := codec.Encode(deadline, values)
 	require.NoError(t, err)
 
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		go func() {
-			for j := 0; j < numIterations; j++ {
+			for range numIterations {
 				_, _, err := codec.Decode(encoded)
 				if err != nil {
 					errChan <- err
@@ -393,7 +393,7 @@ func TestGobCodec_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Collect results
-	for i := 0; i < numGoroutines*2; i++ {
+	for range numGoroutines * 2 {
 		if err := <-errChan; err != nil {
 			t.Errorf("Concurrent access error: %v", err)
 		}

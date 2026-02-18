@@ -21,7 +21,7 @@ type Config struct {
 	// In most scenarios, this entryPoint is the same as the one used for TLS traffic.
 	HTTP3 *HTTP3Config `envPrefix:"HTTP3_" json:"http3,omitempty" yaml:"http3,omitempty"`
 
-	Transport TransportConfig `envPrefix:"TRANSPORT_" json:"transport,omitempty" yaml:"transport,omitempty"`
+	Transport TransportConfig `envPrefix:"TRANSPORT_" json:"transport,omitzero" yaml:"transport,omitempty"`
 
 	TLS *TLSConfig `envPrefix:"TLS_" json:"tls,omitempty" yaml:"tls,omitempty"`
 }

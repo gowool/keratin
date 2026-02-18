@@ -363,7 +363,7 @@ func TestManager_integration(t *testing.T) {
 
 		ctx := context.Background()
 
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			it := m.acquire()
 			it.currHits = i
 

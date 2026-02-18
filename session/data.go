@@ -395,9 +395,7 @@ func (s *Session) MergeSession(ctx context.Context, token string) error {
 		sd.deadline = deadline
 	}
 
-	for k, v := range values {
-		sd.values[k] = v
-	}
+	maps.Copy(sd.values, values)
 
 	sd.status = Modified
 	return s.doStoreDelete(ctx, token)
