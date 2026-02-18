@@ -138,7 +138,7 @@ func (s *Server) Start() {
 	}
 }
 
-func (s *Server) Stop(ctx context.Context) error {
+func (s *Server) Stop(ctx context.Context) (err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -161,20 +161,21 @@ func (s *Server) Stop(ctx context.Context) error {
 		close(s.chErr)
 	}()
 
-	s.cancel()
+	defer func() {
+		s.cancel()
 
-	var err error
+		if err != nil {
+			s.logger.Error("shutdown", "error", err)
+		}
+	}()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return
 		case err1, ok := <-s.chErr:
 			if !ok {
-				if err != nil {
-					s.logger.Error("shutdown", "error", err)
-				}
-				return err
+				return
 			}
 			if !errors.Is(err1, http.ErrServerClosed) {
 				err = errors.Join(err, err1)
