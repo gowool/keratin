@@ -6,7 +6,7 @@ replace github.com/gowool/keratin => ../
 
 require (
 	github.com/danielgtaylor/huma/v2 v2.35.0
-	github.com/gowool/keratin v0.0.0-20260211175155-759f1de49106
+	github.com/gowool/keratin v0.0.0-20260213190635-cab4e888ff73
 	github.com/stretchr/testify v1.11.1
 )
 

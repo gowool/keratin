@@ -3,7 +3,7 @@ module github.com/gowool/keratin
 go 1.26
 
 require (
-	github.com/expr-lang/expr v1.17.7
+	github.com/expr-lang/expr v1.17.8
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.11.1
 )
