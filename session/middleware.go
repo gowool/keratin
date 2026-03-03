@@ -28,7 +28,7 @@ func Middleware(registry *Registry, logger *slog.Logger, skippers ...middleware.
 
 			r, err := registry.ReadSessions(r)
 			if err != nil {
-				logger.Error("failed to read sessions", "error", err)
+				logger.ErrorContext(r.Context(), "failed to read sessions", "error", err)
 
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 
@@ -64,7 +64,7 @@ func (sw *sessionWriter) reset(w http.ResponseWriter, request *http.Request, reg
 
 func (sw *sessionWriter) WriteHeader(code int) {
 	if err := sw.registry.WriteSessions(sw, sw.request); err != nil {
-		sw.logger.Error("failed to write sessions", "error", err)
+		sw.logger.ErrorContext(sw.request.Context(), "failed to write sessions", "error", err)
 	}
 	sw.ResponseWriter.WriteHeader(code)
 }

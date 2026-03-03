@@ -84,7 +84,7 @@ func RequestLogger(cfg RequestLoggerConfig, skippers ...Skipper) func(keratin.Ha
 			}
 
 			cfg.Logger.LogAttrs(
-				context.Background(),
+				r.Context(),
 				level,
 				"incoming request",
 				cfg.RequestLoggerAttrsFunc(w, r, RequestMetadata{

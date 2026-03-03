@@ -45,7 +45,7 @@ func HTTPRecover(cfg RecoverConfig, logger *slog.Logger) func(next http.Handler)
 					length := runtime.Stack(stack, true)
 
 					internal := fmt.Errorf("[PANIC RECOVER] %w %s", recoverErr, stack[:length])
-					logger.Error("panic recovered", "error", internal)
+					logger.ErrorContext(r.Context(), "panic recovered", "error", internal)
 
 					if keratin.ResponseCommitted(w) {
 						return

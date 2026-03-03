@@ -105,7 +105,7 @@ func New(cfg Config, handler http.Handler, logger *slog.Logger) *Server {
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.ProtoMajor < 3 && h3 != nil {
 					if err := h3.SetQUICHeaders(w.Header()); err != nil {
-						logger.Error("set quic headers", "error", err)
+						logger.ErrorContext(r.Context(), "set quic headers", "error", err)
 					}
 				}
 				h2Handler.ServeHTTP(w, r)
@@ -114,12 +114,12 @@ func New(cfg Config, handler http.Handler, logger *slog.Logger) *Server {
 	}
 }
 
-func (s *Server) Start() {
+func (s *Server) Start(ctx context.Context) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.wg.Go(func() {
-		s.logger.Info("start http2", slog.String("address", s.http2.Addr))
+		s.logger.InfoContext(ctx, "start http2", slog.String("address", s.http2.Addr))
 
 		if s.http2.TLSConfig == nil {
 			s.chErr <- s.http2.ListenAndServe()
@@ -131,7 +131,7 @@ func (s *Server) Start() {
 
 	if s.http3 != nil {
 		s.wg.Go(func() {
-			s.logger.Info("start http3", slog.String("address", s.http3.Addr))
+			s.logger.InfoContext(ctx, "start http3", slog.String("address", s.http3.Addr))
 
 			s.chErr <- s.http3.ListenAndServe()
 		})
@@ -143,14 +143,14 @@ func (s *Server) Stop(ctx context.Context) (err error) {
 	defer s.mu.Unlock()
 
 	s.wg.Go(func() {
-		s.logger.Info("stop http2", slog.String("address", s.http2.Addr))
+		s.logger.InfoContext(ctx, "stop http2", slog.String("address", s.http2.Addr))
 
 		s.chErr <- s.http2.Shutdown(ctx)
 	})
 
 	if s.http3 != nil {
 		s.wg.Go(func() {
-			s.logger.Info("stop http3", slog.String("address", s.http3.Addr))
+			s.logger.InfoContext(ctx, "stop http3", slog.String("address", s.http3.Addr))
 
 			s.chErr <- s.http3.Shutdown(ctx)
 		})
@@ -165,7 +165,7 @@ func (s *Server) Stop(ctx context.Context) (err error) {
 		s.cancel()
 
 		if err != nil {
-			s.logger.Error("shutdown", "error", err)
+			s.logger.ErrorContext(ctx, "shutdown", "error", err)
 		}
 	}()
 
