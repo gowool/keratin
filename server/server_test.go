@@ -186,7 +186,7 @@ func TestServerStart(t *testing.T) {
 		server := New(cfg, handler, logger)
 
 		// Start should not block
-		server.Start()
+		server.Start(context.Background())
 
 		// Give some time for servers to start
 		time.Sleep(100 * time.Millisecond)
@@ -226,7 +226,7 @@ func TestServerStop(t *testing.T) {
 		server := New(cfg, handler, logger)
 
 		// Start the server
-		server.Start()
+		server.Start(context.Background())
 
 		// Give some time for server to start
 		time.Sleep(100 * time.Millisecond)
@@ -254,7 +254,7 @@ func TestServerStop(t *testing.T) {
 		server := New(cfg, handler, logger)
 
 		// Start the server
-		server.Start()
+		server.Start(context.Background())
 
 		// Give some time for server to start
 		time.Sleep(100 * time.Millisecond)
@@ -285,7 +285,7 @@ func TestServerStop(t *testing.T) {
 		server := New(cfg, handler, logger)
 
 		// Start the server
-		server.Start()
+		server.Start(context.Background())
 
 		// Give some time for server to start
 		time.Sleep(100 * time.Millisecond)
@@ -456,7 +456,7 @@ func TestServerConcurrentStartStop(t *testing.T) {
 
 	// Start goroutine
 	go func() {
-		server.Start()
+		server.Start(context.Background())
 		done <- true
 	}()
 
@@ -588,7 +588,7 @@ func TestStartServer_WithTLS(t *testing.T) {
 		cfg.SetDefaults()
 
 		server := New(cfg, handler, logger)
-		server.Start()
+		server.Start(context.Background())
 
 		time.Sleep(100 * time.Millisecond)
 
@@ -641,7 +641,7 @@ func TestStartServer_WithHTTP3(t *testing.T) {
 		cfg.SetDefaults()
 
 		server := New(cfg, handler, logger)
-		server.Start()
+		server.Start(context.Background())
 
 		time.Sleep(100 * time.Millisecond)
 
@@ -670,7 +670,7 @@ func TestStopServer_ContextCancellation(t *testing.T) {
 		cfg.SetDefaults()
 
 		server := New(cfg, handler, logger)
-		server.Start()
+		server.Start(context.Background())
 
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
 		defer cancel()
@@ -691,7 +691,7 @@ func TestStopServer_ContextCancellation(t *testing.T) {
 		cfg.SetDefaults()
 
 		server := New(cfg, handler, logger)
-		server.Start()
+		server.Start(context.Background())
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
