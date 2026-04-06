@@ -8,8 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gowool/keratin"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/gowool/keratin"
 )
 
 // Copied from https://github.com/labstack/echo to avoid nuances around the specific
@@ -522,7 +523,7 @@ func TestCSRFErrorHandling(t *testing.T) {
 	router.Build().ServeHTTP(res, req)
 
 	assert.Equal(t, http.StatusTeapot, res.Code)
-	assert.Equal(t, "{\"message\":\"error_handler_executed\"}\n", res.Body.String())
+	assert.Equal(t, "{\"code\":418,\"message\":\"error_handler_executed\"}\n", res.Body.String())
 }
 
 func TestCSRFConfig_checkSecFetchSiteRequest(t *testing.T) {

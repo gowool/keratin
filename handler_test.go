@@ -2,6 +2,7 @@ package keratin
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -198,7 +199,7 @@ func TestDefaultErrorHandler_HTTPErrorResponse(t *testing.T) {
 			err:            NewHTTPError(http.StatusBadRequest, "bad request"),
 			expectedStatus: http.StatusBadRequest,
 			expectedJSON:   true,
-			expectedBody:   "{\"message\":\"bad request\"}\n",
+			expectedBody:   "{\"code\":400,\"message\":\"bad request\"}\n",
 		},
 		{
 			name:           "returns default HTTPError for non-HTTPError",
@@ -206,7 +207,7 @@ func TestDefaultErrorHandler_HTTPErrorResponse(t *testing.T) {
 			err:            errors.New("some error"),
 			expectedStatus: http.StatusInternalServerError,
 			expectedJSON:   true,
-			expectedBody:   "{\"message\":\"Internal Server Error\"}\n",
+			expectedBody:   "{\"code\":500,\"message\":\"Internal Server Error\"}\n",
 		},
 		{
 			name:           "returns JSON when Accept is application/json",
@@ -214,7 +215,7 @@ func TestDefaultErrorHandler_HTTPErrorResponse(t *testing.T) {
 			err:            ErrNotFound,
 			expectedStatus: http.StatusNotFound,
 			expectedJSON:   true,
-			expectedBody:   "{\"message\":\"Not Found\"}\n",
+			expectedBody:   "{\"code\":404,\"message\":\"Not Found\"}\n",
 		},
 		{
 			name:           "returns JSON when Accept contains application/json",
@@ -222,7 +223,7 @@ func TestDefaultErrorHandler_HTTPErrorResponse(t *testing.T) {
 			err:            ErrUnauthorized,
 			expectedStatus: http.StatusUnauthorized,
 			expectedJSON:   true,
-			expectedBody:   "{\"message\":\"Unauthorized\"}\n",
+			expectedBody:   "{\"code\":401,\"message\":\"Unauthorized\"}\n",
 		},
 		{
 			name:           "returns plain text when Accept is text/html",
@@ -254,7 +255,7 @@ func TestDefaultErrorHandler_HTTPErrorResponse(t *testing.T) {
 			err:            NewHTTPError(http.StatusTeapot, "I'm a teapot"),
 			expectedStatus: http.StatusTeapot,
 			expectedJSON:   true,
-			expectedBody:   "{\"message\":\"I'm a teapot\"}\n",
+			expectedBody:   "{\"code\":418,\"message\":\"I'm a teapot\"}\n",
 		},
 		{
 			name:           "returns JSON with custom error message",
@@ -262,7 +263,7 @@ func TestDefaultErrorHandler_HTTPErrorResponse(t *testing.T) {
 			err:            NewHTTPError(http.StatusConflict, "resource already exists"),
 			expectedStatus: http.StatusConflict,
 			expectedJSON:   true,
-			expectedBody:   "{\"message\":\"resource already exists\"}\n",
+			expectedBody:   "{\"code\":409,\"message\":\"resource already exists\"}\n",
 		},
 		{
 			name:           "handles wrapped HTTPError",
@@ -270,7 +271,7 @@ func TestDefaultErrorHandler_HTTPErrorResponse(t *testing.T) {
 			err:            ErrNotFound.Wrap(errors.New("details")),
 			expectedStatus: http.StatusNotFound,
 			expectedJSON:   true,
-			expectedBody:   "{\"message\":\"Not Found\"}\n",
+			expectedBody:   "{\"code\":404,\"message\":\"Not Found\"}\n",
 		},
 	}
 
@@ -382,31 +383,31 @@ func TestDefaultErrorHandler_JSONResponse(t *testing.T) {
 			name:         "simple HTTPError",
 			acceptHeader: MIMEApplicationJSON,
 			err:          NewHTTPError(http.StatusBadRequest, "invalid input"),
-			expectedJSON: `{"message":"invalid input"}`,
+			expectedJSON: `{"code":400,"message":"invalid input"}`,
 		},
 		{
 			name:         "empty message HTTPError",
 			acceptHeader: MIMEApplicationJSON,
 			err:          NewHTTPError(http.StatusNotFound, ""),
-			expectedJSON: `{"message":""}`,
+			expectedJSON: `{"code":404}`,
 		},
 		{
 			name:         "HTTPError with special characters",
 			acceptHeader: MIMEApplicationJSON,
 			err:          NewHTTPError(http.StatusBadRequest, `"quoted" & <angled>`),
-			expectedJSON: `{"message":"\"quoted\" & <angled>"}`,
+			expectedJSON: `{"code":400,"message":"\"quoted\" & <angled>"}`,
 		},
 		{
 			name:         "HTTPError with unicode",
 			acceptHeader: MIMEApplicationJSON,
 			err:          NewHTTPError(http.StatusBadRequest, "错误信息"),
-			expectedJSON: `{"message":"错误信息"}`,
+			expectedJSON: `{"code":400,"message":"错误信息"}`,
 		},
 		{
 			name:         "ErrNotFound wrapped with error",
 			acceptHeader: MIMEApplicationJSON,
 			err:          ErrNotFound.Wrap(errors.New("resource id not found")),
-			expectedJSON: `{"message":"Not Found"}`,
+			expectedJSON: `{"code":404,"message":"Not Found"}`,
 		},
 	}
 
@@ -531,7 +532,7 @@ func TestDefaultErrorHandler_CaseInsensitiveAccept(t *testing.T) {
 
 			if tt.expectJSON {
 				assert.Equal(t, MIMEApplicationJSON, w.Header().Get(HeaderContentType))
-				assert.JSONEq(t, `{"message":"Bad Request"}`, w.Body.String())
+				assert.JSONEq(t, `{"code":400,"message":"Bad Request"}`, w.Body.String())
 			} else {
 				assert.Equal(t, "Bad Request\n", w.Body.String())
 			}
@@ -573,7 +574,7 @@ func TestDefaultErrorHandler_AcceptHeaderValues(t *testing.T) {
 			acceptHeader: "text/html, text/plain, application/json",
 			err:          ErrBadRequest,
 			checkJSON: func(t *testing.T, body string) {
-				assert.JSONEq(t, `{"message":"Bad Request"}`, body)
+				assert.JSONEq(t, `{"code":400,"message":"Bad Request"}`, body)
 			},
 		},
 		{
@@ -690,7 +691,13 @@ func TestDefaultErrorHandler_ErrorMessagePriority(t *testing.T) {
 			wrapped.reset(w)
 			DefaultErrorHandler(wrapped, r, tt.err)
 
-			assert.JSONEq(t, `{"message":"`+tt.expectedMsg+`"}`, w.Body.String())
+			code := ErrorStatusCode(tt.err)
+
+			if tt.expectedMsg == "" {
+				assert.JSONEq(t, fmt.Sprintf(`{"code":%d}`, code), w.Body.String())
+			} else {
+				assert.JSONEq(t, fmt.Sprintf(`{"code":%d,"message":"%s"}`, code, tt.expectedMsg), w.Body.String())
+			}
 		})
 	}
 }
@@ -718,7 +725,7 @@ func TestHandler_ErrorHandlingFlow(t *testing.T) {
 		DefaultErrorHandler(wrapped, r, err)
 
 		assert.Equal(t, http.StatusNotFound, w.Code)
-		assert.JSONEq(t, `{"message":"Not Found"}`, w.Body.String())
+		assert.JSONEq(t, `{"code":404,"message":"Not Found"}`, w.Body.String())
 	})
 
 	t.Run("successful flow with no error", func(t *testing.T) {
