@@ -50,8 +50,9 @@ var (
 )
 
 type HTTPError struct {
-	Code    int    `json:"-"`
-	Message string `json:"message"`
+	Code    int    `json:"code,omitempty"`
+	Message string `json:"message,omitempty"`
+	Data    any    `json:"data,omitempty"`
 	err     error
 }
 
@@ -61,6 +62,12 @@ func NewHTTPError(code int, message string) *HTTPError {
 		Code:    code,
 		Message: message,
 	}
+}
+
+// SetData sets data to be returned in HTTP response
+func (he *HTTPError) SetData(data any) *HTTPError {
+	he.Data = data
+	return he
 }
 
 // StatusCode returns status code for HTTP response

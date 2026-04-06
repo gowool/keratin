@@ -15,11 +15,13 @@ func TestHTTPError_NewHTTPError(t *testing.T) {
 		name    string
 		code    int
 		message string
+		data    any
 	}{
 		{
 			name:    "creates error with custom message",
 			code:    http.StatusBadRequest,
 			message: "invalid request",
+			data:    "some data",
 		},
 		{
 			name:    "creates error with empty message",
@@ -30,15 +32,17 @@ func TestHTTPError_NewHTTPError(t *testing.T) {
 			name:    "creates error with standard status",
 			code:    http.StatusNotFound,
 			message: "resource not found",
+			data:    []string{"id1", "id2"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := NewHTTPError(tt.code, tt.message)
+			err := NewHTTPError(tt.code, tt.message).SetData(tt.data)
 
 			assert.Equal(t, tt.code, err.Code)
 			assert.Equal(t, tt.message, err.Message)
+			assert.Equal(t, tt.data, err.Data)
 			assert.Nil(t, err.err)
 		})
 	}
